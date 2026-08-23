@@ -1,0 +1,60 @@
+[project]
+name = "duckpipe"
+version = "0.1.0"
+description = "A serverless-first, DuckDB-native pipeline orchestrator. No servers, no schedulers, no metadata database — just a Python file and a `.duckdb` state file."
+readme = "README.md"
+authors = [
+    { name = "Runzhou Li", email = "runzhou.li@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "duckdb>=1.4.0",
+    "typer>=0.15.0",
+    "rich>=13.9.0",
+]
+
+[project.optional-dependencies]
+remote = [
+    "fsspec>=2024.10.0",
+]
+s3 = [
+    "duckpipe[remote]",
+    "s3fs>=2024.10.0",
+]
+gcs = [
+    "duckpipe[remote]",
+    "gcsfs>=2024.10.0",
+]
+azure = [
+    "duckpipe[remote]",
+    "adlfs>=2024.10.0",
+]
+
+[project.scripts]
+duckpipe = "duckpipe.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.4,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.25.0",
+    "ruff>=0.8.0",
+    "polars>=1.17.0",
+    "pyarrow>=18.0.0",
+    "pandas>=2.2.0",
+    "fsspec>=2024.10.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
