@@ -91,13 +91,12 @@ duckpipe.run(
 This downloads the `.duckdb` state file before the run and uploads it
 after (requires the `duckpipe[s3]`/`[gcs]`/`[azure]` extra) — see
 [`triggers.md`](triggers.md) for the same mechanism used from Lambda and
-CI. **Known limitation, accepted for v1** (ROADMAP.md §12, open question
-#5): two overlapping invocations against the same `state_uri` race on
-download→mutate→upload with last-writer-wins, undocumented locking. Fine
-for the common case (one pipeline, one in-flight attempt at a time); if
-your host orchestrator retries a still-running attempt or runs mapped
-partitions concurrently against the *same* `state_uri`, give each
-partition its own state file instead.
+CI. An advisory lock is held for the duration by default, so if your host
+orchestrator retries a still-running attempt or runs mapped partitions
+concurrently against the *same* `state_uri`, the overlapping run raises
+`StateLockedError` instead of racing (ROADMAP.md §12, open question #5).
+Give each partition its own `state_uri` if they should genuinely run in
+parallel.
 
 ## Where not to go
 

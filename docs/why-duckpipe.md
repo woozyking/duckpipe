@@ -21,7 +21,7 @@ the actual code in this repo that responds to it — not an aspiration.
 
 ## What running it actually looks like
 
-Not a mockup — this is `examples/01_daily_batch_etl/pipeline.py` in full,
+Not a mockup — this is `examples/01_daily_batch_etl/duck.py` in full,
 minus the module docstring:
 
 ```python
@@ -40,8 +40,8 @@ def load(daily=clean):
 ```
 
 ```
-$ uv run duckpipe run examples/01_daily_batch_etl/pipeline.py
-      run 4804139c…  (examples/01_daily_batch_etl/duckpipe.db)
+$ uv run duckpipe run examples/01_daily_batch_etl/duck.py --db examples/01_daily_batch_etl/duckpipe.duck.db
+      run 4804139c…  (examples/01_daily_batch_etl/duckpipe.duck.db)
 ┏━━━━━━━━━┳━━━━━━━━━┓
 ┃ task    ┃ status  ┃
 ┡━━━━━━━━━╇━━━━━━━━━┩
@@ -50,7 +50,7 @@ $ uv run duckpipe run examples/01_daily_batch_etl/pipeline.py
 │ load    │ success │
 └─────────┴─────────┘
 
-$ uv run duckpipe run examples/01_daily_batch_etl/pipeline.py   # run it again
+$ uv run duckpipe run examples/01_daily_batch_etl/duck.py --db examples/01_daily_batch_etl/duckpipe.duck.db   # run it again
 ┏━━━━━━━━━┳━━━━━━━━━┓
 ┃ task    ┃ status  ┃
 ┡━━━━━━━━━╇━━━━━━━━━┩

@@ -19,6 +19,7 @@ from rich.table import Table
 
 from duckpipe.dag import CycleError, DuplicateTaskNameError, build_dag
 from duckpipe.fingerprint import resolve_fingerprints
+from duckpipe.remote import StateLockedError
 from duckpipe.scheduler import _default_db_path, would_skip
 from duckpipe.scheduler import run as run_pipeline
 
@@ -33,9 +34,16 @@ console = Console()
 _STATUS_STYLE = {"success": "green", "skipped": "yellow", "failed": "red"}
 
 # A malformed pipeline (a cycle, a duplicate task name, a plain typo that
-# blows up at import time) is a user mistake, not a DuckPipe bug -- it
-# should read as one short line, not a wall of framework stack frames.
-_USER_FACING_ERRORS = (CycleError, DuplicateTaskNameError, ImportError, SyntaxError)
+# blows up at import time) or a locked state_uri is a user-actionable
+# situation, not a DuckPipe bug -- it should read as one short line, not
+# a wall of framework stack frames.
+_USER_FACING_ERRORS = (
+    CycleError,
+    DuplicateTaskNameError,
+    ImportError,
+    SyntaxError,
+    StateLockedError,
+)
 
 
 def _friendly_errors[F: Callable[..., object]](command: F) -> F:
@@ -73,6 +81,13 @@ def run(
     max_workers: Annotated[
         int | None, typer.Option("--max-workers", help="Cap concurrent tasks")
     ] = None,
+    no_lock: Annotated[
+        bool,
+        typer.Option(
+            "--no-lock",
+            help="With --state-uri, skip the advisory lock and allow racing (not recommended)",
+        ),
+    ] = False,
 ) -> None:
     """Run a pipeline module end-to-end."""
     summary = run_pipeline(
@@ -81,6 +96,7 @@ def run(
         state_uri=state_uri,
         force=force,
         max_workers=max_workers,
+        lock=not no_lock,
     )
     table = Table(title=f"run {summary.run_id}  ({summary.db_path})")
     table.add_column("task")

@@ -1,6 +1,10 @@
+import json
+import time
 from pathlib import Path
 
-from duckpipe.remote import sync_down, sync_up
+import pytest
+
+from duckpipe.remote import StateLockedError, locked, sync_down, sync_up
 from duckpipe.scheduler import run
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -47,3 +51,49 @@ def test_sync_down_is_a_noop_when_remote_does_not_exist_yet(tmp_path):
 
     sync_down(state_uri, local_db)  # should not raise
     assert not local_db.exists()
+
+
+def test_locked_blocks_a_second_concurrent_acquire(tmp_path):
+    state_uri = f"file://{tmp_path / 'duckpipe.db'}"
+
+    with locked(state_uri):
+        with pytest.raises(StateLockedError):
+            with locked(state_uri):
+                pass  # pragma: no cover
+
+    # Released on exit -- a later, non-overlapping acquire succeeds.
+    with locked(state_uri):
+        pass
+
+
+def test_locked_reclaims_a_stale_lock(tmp_path):
+    import fsspec
+
+    state_uri = f"file://{tmp_path / 'duckpipe.db'}"
+    fs, lock_path = fsspec.core.url_to_fs(state_uri + ".lock")
+    with fs.open(lock_path, "wb") as f:
+        f.write(json.dumps({"holder": "dead:123", "acquired_at": time.time() - 10}).encode())
+
+    with locked(state_uri, max_lock_age=1.0):
+        pass  # the 10s-old lock is well past the 1s staleness threshold
+
+
+def test_run_raises_state_locked_error_instead_of_racing(tmp_path):
+    state_uri = f"file://{tmp_path / 'duckpipe.db'}"
+
+    with locked(state_uri):
+        with pytest.raises(StateLockedError):
+            run(FIXTURES / "toy_dag.py", db_path=tmp_path / "scratch.duckdb", state_uri=state_uri)
+
+
+def test_run_with_lock_false_ignores_an_existing_lock(tmp_path):
+    state_uri = f"file://{tmp_path / 'duckpipe.db'}"
+
+    with locked(state_uri):
+        summary = run(
+            FIXTURES / "toy_dag.py",
+            db_path=tmp_path / "scratch.duckdb",
+            state_uri=state_uri,
+            lock=False,
+        )
+    assert summary.success

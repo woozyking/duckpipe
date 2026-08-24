@@ -14,6 +14,7 @@ Prefect / Dagster (sec 9) -- needs to call.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -199,6 +200,24 @@ def _default_db_path(source: str | Path | ModuleType) -> Path:
     return base.parent / "duckpipe.db"
 
 
+def _build_and_execute(
+    source: str | Path | ModuleType,
+    resolved_db_path: Path,
+    force: bool,
+    max_workers: int | None,
+) -> RunSummary:
+    dag = build_dag(source)
+    with StateStore(resolved_db_path) as store:
+        run_id = store.start_run(_module_path(source))
+        try:
+            summary = asyncio.run(_execute_dag(dag, store, run_id, force, max_workers))
+            store.finish_run(run_id, "success" if summary.success else "failed")
+        except Exception:
+            store.finish_run(run_id, "failed")
+            raise
+    return summary
+
+
 def run(
     source: str | Path | ModuleType,
     *,
@@ -206,6 +225,7 @@ def run(
     state_uri: str | None = None,
     force: bool = False,
     max_workers: int | None = None,
+    lock: bool = True,
 ) -> RunSummary:
     """Run a pipeline end-to-end: build its DAG, execute it, record state.
 
@@ -215,28 +235,25 @@ def run(
     ``state_uri`` to sync that file to/from S3/GCS/Azure/local before and
     after the run (tenet #1, sec 9); requires the ``duckpipe[remote]``
     extra.
+
+    When ``state_uri`` is set, an advisory lock (``duckpipe.remote.locked``)
+    is held for the whole download-run-upload sequence, so two overlapping
+    invocations against the same ``state_uri`` raise ``StateLockedError``
+    instead of silently racing (ROADMAP.md sec 12, open question #5). Pass
+    ``lock=False`` to opt back into the old unlocked behavior.
     """
     resolved_db_path = Path(db_path) if db_path is not None else _default_db_path(source)
 
-    if state_uri:
-        from duckpipe.remote import sync_down
+    if not state_uri:
+        return _build_and_execute(source, resolved_db_path, force, max_workers)
 
+    from duckpipe.remote import locked, sync_down, sync_up
+
+    with contextlib.ExitStack() as stack:
+        if lock:
+            stack.enter_context(locked(state_uri))
         sync_down(state_uri, resolved_db_path)
-
-    dag = build_dag(source)
-
-    with StateStore(resolved_db_path) as store:
-        run_id = store.start_run(_module_path(source))
-        try:
-            summary = asyncio.run(_execute_dag(dag, store, run_id, force, max_workers))
-            store.finish_run(run_id, "success" if summary.success else "failed")
-        except Exception:
-            store.finish_run(run_id, "failed")
-            raise
-
-    if state_uri:
-        from duckpipe.remote import sync_up
-
+        summary = _build_and_execute(source, resolved_db_path, force, max_workers)
         sync_up(state_uri, resolved_db_path)
 
     return summary

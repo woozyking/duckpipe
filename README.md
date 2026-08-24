@@ -116,12 +116,14 @@ duckdb duckpipe.db -c "SELECT * FROM v_run_summary ORDER BY started_at DESC LIMI
 
 ## Examples
 
-Three realistic pipelines over real, bundled open data (NYC TLC taxi
-trips) live in [`examples/`](examples/README.md) — a daily batch ETL, a
-fan-out-over-partitions pipeline, and a fully-cached incremental SQL
-chain. Every one of them also runs unmodified against the full public
-dataset by setting one environment variable; see
-[`examples/data/README.md`](examples/data/README.md).
+Realistic pipelines over real, bundled open data (NYC TLC taxi trips)
+live in [`examples/`](examples/README.md): a daily batch ETL and a
+fan-out-over-partitions pipeline, each shipped as an apples-to-apples
+DuckDB/Polars pair (`duck.py`/`pl.py`) that stays lazy/streaming end to
+end, plus one dedicated example that deliberately materializes
+mid-pipeline and explains exactly why. Every one of them also runs
+unmodified against the full public dataset by setting one environment
+variable; see [`examples/data/README.md`](examples/data/README.md).
 
 ## Scaling to remote storage
 
@@ -130,6 +132,12 @@ before and after a run (download-mutate-upload, since DuckDB's own file
 format only supports read-only remote `ATTACH`). This is what makes
 DuckPipe safe to run inside another orchestrator's ephemeral,
 container-per-invocation workers — see ROADMAP.md §2, §9.
+
+Two overlapping invocations against the same `state_uri` hold an
+advisory lock for the whole download-run-upload sequence (via each
+object store's native conditional-write primitive — no extra server or
+database needed), so a race raises `StateLockedError` instead of
+silently losing an update. Pass `lock=False`/`--no-lock` to opt out.
 
 ```bash
 duckpipe run pipeline.py --state-uri s3://my-bucket/pipelines/daily/duckpipe.db
@@ -188,6 +196,6 @@ PR — also a live example of the GitHub Actions trigger recipe above.
 ## Status
 
 Pre-1.0, working name (see [`ROADMAP.md`](ROADMAP.md) §0/§12 for the open
-naming question). Phases 0-2 of the roadmap are implemented and covered
+naming question). Phases 0-2.5 of the roadmap are implemented and covered
 by the test suite, examples, and docs above; see `ROADMAP.md` §11 for
 what's done and what's next (Phase 3: distributed/serverless execution).

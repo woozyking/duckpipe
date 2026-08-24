@@ -1,20 +1,21 @@
-"""Daily batch ETL over NYC TLC yellow taxi trip data.
+"""Daily batch ETL over NYC TLC yellow taxi trip data -- DuckDB engine.
 
-extract -> clean -> load, the shape of most "batch ETL" pipelines. `load`
-writes into its own small warehouse file, separate from DuckPipe's own
-`duckpipe.db` state -- the pipeline's data and the orchestrator's
-metadata never share a file.
+Apples-to-apples with pl.py in this same folder: same source data, same
+`extract -> clean -> load` shape, same output shape. Compare how the
+two engines express it.
 
-`extract`/`clean` return a lazy `DuckDBPyRelation` and skip `cache=True`
-on purpose: a lazy relation holds a live query-plan handle, not a plain
-value, so it isn't picklable, and rebuilding the plan itself is nearly
-free anyway (no rows move until something materializes it). `load` is
-where real work happens (materializing the aggregate into the warehouse
-table), so that's the one task worth fingerprinting a cached result for.
+extract/clean/load stay lazy the whole way through -- `extract`/`clean`
+return a `DuckDBPyRelation`, a query plan, not rows. `load` is the one
+place real work happens (materializing the aggregate into a warehouse
+table), so it's the one task worth `cache=True`: a lazy relation holds a
+live query-plan handle, not a plain value, so it isn't picklable anyway,
+and rebuilding the plan itself is nearly free (nothing executes until
+something -- here, the `CREATE TABLE AS`) materializes it.
 
-Run it:
+Run it (from the repo root):
 
-    uv run duckpipe run examples/01_daily_batch_etl/pipeline.py
+    uv run duckpipe run examples/01_daily_batch_etl/duck.py \
+        --db examples/01_daily_batch_etl/duckpipe.duck.db
 
 Run it again immediately and `load` reports "skipped" -- nothing about
 the source data or task code changed, so the fingerprint-based
@@ -36,7 +37,7 @@ HERE = Path(__file__).parent
 DATA = os.environ.get(
     "DUCKPIPE_EXAMPLE_DATA", str(HERE.parent / "data" / "nyc_taxi_sample.parquet")
 )
-WAREHOUSE = HERE / "warehouse.duckdb"
+WAREHOUSE = HERE / "warehouse.duck.duckdb"
 
 
 @task
@@ -84,4 +85,4 @@ def load(daily=clean):
 if __name__ == "__main__":
     from duckpipe import run
 
-    run(__file__)
+    run(__file__, db_path=HERE / "duckpipe.duck.db")

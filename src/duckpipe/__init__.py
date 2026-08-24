@@ -23,6 +23,7 @@ Then from a shell: ``duckpipe run pipeline.py``.
 from __future__ import annotations
 
 from duckpipe.dag import DAG, CycleError, build_dag
+from duckpipe.remote import StateLockedError
 from duckpipe.scheduler import RunSummary, run
 from duckpipe.task import Task, task
 
@@ -34,6 +35,7 @@ __all__ = [
     "DAG",
     "CycleError",
     "RunSummary",
+    "StateLockedError",
 ]
 
 __version__ = "0.1.0"

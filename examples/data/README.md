@@ -21,13 +21,17 @@ uv run python scripts/fetch_sample_data.py
 ## Running the examples at scale
 
 Every example pipeline reads `DATA` from the `DUCKPIPE_EXAMPLE_DATA`
-environment variable, falling back to the bundled sample. DuckDB reads a
-`https://` parquet URL directly (streaming, no download), so the exact
-same pipeline code runs unmodified against the full public dataset:
+environment variable, falling back to the bundled sample. Both DuckDB
+(`read_parquet`/httpfs) and Polars (`scan_parquet`) read a `https://`
+parquet URL directly (streaming, no download), so the exact same
+pipeline code runs unmodified against the full public dataset:
 
 ```bash
 DUCKPIPE_EXAMPLE_DATA="https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2024-01.parquet" \
-    uv run duckpipe run examples/01_daily_batch_etl/pipeline.py
+    uv run duckpipe run examples/01_daily_batch_etl/duck.py --db examples/01_daily_batch_etl/duckpipe.duck.db
+
+DUCKPIPE_EXAMPLE_DATA="https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2024-01.parquet" \
+    uv run duckpipe run examples/01_daily_batch_etl/pl.py --db examples/01_daily_batch_etl/duckpipe.pl.db
 ```
 
 That's ~3M rows for one month instead of ~12k, with zero code changes —
