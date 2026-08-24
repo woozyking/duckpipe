@@ -28,13 +28,12 @@ CREATE TABLE IF NOT EXISTS pipeline_runs (
 CREATE TABLE IF NOT EXISTS task_runs (
     run_id VARCHAR,
     task_name VARCHAR,
-    status VARCHAR,
+    status VARCHAR,  -- 'success' | 'skipped' | 'failed' | 'upstream_failed'
     started_at TIMESTAMP,
     ended_at TIMESTAMP,
     duration_ms DOUBLE,
     error VARCHAR,
     fingerprint VARCHAR,
-    skipped BOOLEAN,
     attempt INTEGER
 );
 
@@ -60,6 +59,44 @@ CREATE TABLE IF NOT EXISTS task_cache (
 );
 """
 
+# Pre-built observability views (ROADMAP.md Phase 2: "since state is just
+# DuckDB, ship a couple of pre-built SQL views... rather than building a UI
+# server"). `duckpipe stats` queries these directly, but they're just as
+# usable from any other DuckDB client against the same .duckdb file.
+VIEWS_SQL = """
+CREATE OR REPLACE VIEW v_latest_task_status AS
+SELECT run_id, task_name, status, started_at, ended_at, duration_ms, error, fingerprint
+FROM task_runs
+QUALIFY row_number() OVER (PARTITION BY task_name ORDER BY ended_at DESC) = 1;
+
+CREATE OR REPLACE VIEW v_run_summary AS
+SELECT
+    p.run_id,
+    p.module_path,
+    p.started_at,
+    p.ended_at,
+    p.status,
+    count(t.task_name) AS task_count,
+    sum(CASE WHEN t.status = 'success' THEN 1 ELSE 0 END) AS succeeded_count,
+    sum(CASE WHEN t.status = 'skipped' THEN 1 ELSE 0 END) AS skipped_count,
+    sum(CASE WHEN t.status IN ('failed', 'upstream_failed') THEN 1 ELSE 0 END) AS failed_count
+FROM pipeline_runs p
+LEFT JOIN task_runs t ON t.run_id = p.run_id
+GROUP BY p.run_id, p.module_path, p.started_at, p.ended_at, p.status;
+
+CREATE OR REPLACE VIEW v_task_stats AS
+SELECT
+    task_name,
+    count(*) AS runs,
+    avg(duration_ms) AS avg_duration_ms,
+    max(duration_ms) AS max_duration_ms,
+    sum(CASE WHEN status = 'skipped' THEN 1 ELSE 0 END) AS skipped_count,
+    sum(CASE WHEN status IN ('failed', 'upstream_failed') THEN 1 ELSE 0 END) AS failed_count,
+    max(ended_at) AS last_run_at
+FROM task_runs
+GROUP BY task_name;
+"""
+
 # See ROADMAP.md open question #3: pickling is simple and fully generic but
 # can be slow/large for big tabular outputs -- warn rather than silently
 # writing a huge blob into the state file.
@@ -74,6 +111,51 @@ def new_run_id() -> str:
     return uuid.uuid4().hex
 
 
+def serialize(value: Any, backend: str) -> bytes:
+    if backend == "pickle":
+        return pickle.dumps(value)
+    if backend == "arrow":
+        return _serialize_arrow(value)
+    raise ValueError(f"unknown cache_backend {backend!r}")
+
+
+def deserialize(payload: bytes, backend: str) -> Any:
+    if backend == "pickle":
+        return pickle.loads(payload)
+    if backend == "arrow":
+        return _deserialize_arrow(payload)
+    raise ValueError(f"unknown cache_backend {backend!r}")
+
+
+def _serialize_arrow(value: Any) -> bytes:
+    # Lazy import: the core dependency tree never requires pyarrow unless
+    # a task actually opts into `cache_backend="arrow"` (duckpipe[arrow]).
+    # `pa.table(value)` accepts anything implementing the Arrow PyCapsule
+    # interface -- a DuckDBPyRelation, a pandas/Polars DataFrame, a
+    # pyarrow Table itself (ROADMAP.md sec 6.2, sec 13). Daft doesn't
+    # implement it yet as of this writing (Eventual-Inc/Daft#2504); call
+    # `.to_arrow()` yourself first if you need to cache a Daft result.
+    import pyarrow as pa
+
+    table = pa.table(value)
+    sink = pa.BufferOutputStream()
+    with pa.ipc.new_stream(sink, table.schema) as writer:
+        writer.write_table(table)
+    return sink.getvalue().to_pybytes()
+
+
+def _deserialize_arrow(payload: bytes) -> Any:
+    import pyarrow as pa
+
+    # A cache hit always hands back a plain pyarrow.Table regardless of
+    # what type originally produced it -- caching is inherently an eager
+    # materialization step, and pyarrow.Table interoperates trivially
+    # with DuckDB (`duckdb.sql("select * from table")`), Polars
+    # (`pl.from_arrow`), and pandas (`.to_pandas()`) from there.
+    with pa.ipc.open_stream(payload) as reader:
+        return reader.read_all()
+
+
 class StateStore:
     """Thin wrapper around one DuckDB connection holding all orchestrator state."""
 
@@ -82,6 +164,7 @@ class StateStore:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.con = duckdb.connect(str(self.db_path))
         self.con.execute(SCHEMA_SQL)
+        self.con.execute(VIEWS_SQL)
 
     def close(self) -> None:
         self.con.close()
@@ -146,12 +229,11 @@ class StateStore:
         ended_at: datetime,
         fingerprint: str,
         error: str | None = None,
-        skipped: bool = False,
         attempt: int = 1,
     ) -> None:
         duration_ms = (ended_at - started_at).total_seconds() * 1000
         self.con.execute(
-            "INSERT INTO task_runs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO task_runs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 run_id,
                 task_name,
@@ -161,7 +243,6 @@ class StateStore:
                 duration_ms,
                 error,
                 fingerprint,
-                skipped,
                 attempt,
             ],
         )
@@ -187,17 +268,18 @@ class StateStore:
 
     def get_cached(self, task_name: str, fingerprint: str) -> Any:
         row = self.con.execute(
-            "SELECT payload FROM task_cache WHERE task_name = ? AND fingerprint = ?",
+            "SELECT payload, backend FROM task_cache WHERE task_name = ? AND fingerprint = ?",
             [task_name, fingerprint],
         ).fetchone()
         if row is None:
             raise KeyError((task_name, fingerprint))
-        return pickle.loads(row[0])
+        payload, backend = row
+        return deserialize(payload, backend)
 
     def set_cached(
         self, task_name: str, fingerprint: str, value: Any, backend: str = "pickle"
     ) -> int:
-        payload = pickle.dumps(value)
+        payload = serialize(value, backend)
         size = len(payload)
         self.con.execute(
             """

@@ -7,6 +7,8 @@ a Lambda handler -- would call directly (ROADMAP.md sec 5, sec 9).
 
 from __future__ import annotations
 
+import functools
+from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
 
@@ -15,21 +17,46 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from duckpipe.dag import build_dag
-from duckpipe.scheduler import _default_db_path
+from duckpipe.dag import CycleError, DuplicateTaskNameError, build_dag
+from duckpipe.fingerprint import resolve_fingerprints
+from duckpipe.scheduler import _default_db_path, would_skip
 from duckpipe.scheduler import run as run_pipeline
 
 app = typer.Typer(
     name="duckpipe",
     help="A serverless-first, DuckDB-native pipeline orchestrator.",
     no_args_is_help=True,
+    pretty_exceptions_enable=False,
 )
 console = Console()
 
 _STATUS_STYLE = {"success": "green", "skipped": "yellow", "failed": "red"}
 
+# A malformed pipeline (a cycle, a duplicate task name, a plain typo that
+# blows up at import time) is a user mistake, not a DuckPipe bug -- it
+# should read as one short line, not a wall of framework stack frames.
+_USER_FACING_ERRORS = (CycleError, DuplicateTaskNameError, ImportError, SyntaxError)
+
+
+def _friendly_errors[F: Callable[..., object]](command: F) -> F:
+    @functools.wraps(command)
+    def wrapper(*args: object, **kwargs: object) -> object:
+        try:
+            return command(*args, **kwargs)
+        except typer.Exit:
+            raise
+        except _USER_FACING_ERRORS as exc:
+            console.print(f"[red]error:[/red] {exc}")
+            raise typer.Exit(code=1) from None
+        except Exception as exc:  # noqa: BLE001 - last-resort CLI-friendly fallback
+            console.print(f"[red]error:[/red] {type(exc).__name__}: {exc}")
+            raise typer.Exit(code=1) from None
+
+    return wrapper
+
 
 @app.command()
+@_friendly_errors
 def run(
     pipeline: Annotated[Path, typer.Argument(exists=True, help="Path to a pipeline .py module")],
     db: Annotated[
@@ -69,18 +96,24 @@ def run(
 
 
 @app.command()
+@_friendly_errors
 def show(
     pipeline: Annotated[Path, typer.Argument(exists=True, help="Path to a pipeline .py module")],
     db: Annotated[
         Path | None, typer.Option("--db", help="State file to read last-run status from")
     ] = None,
 ) -> None:
-    """Print the resolved DAG and each task's last-run status."""
+    """Print the resolved DAG, each task's last-run status, and what would
+    happen if you ran it again right now -- a dry-run preview of the same
+    fingerprint check `run` itself uses, so you can see what's stale
+    before spending the time to re-run it."""
     dag = build_dag(pipeline)
     order = dag.topological_order()
+    fingerprints = resolve_fingerprints(order)
     db_path = db or _default_db_path(pipeline)
 
     last_status: dict[str, tuple[str, str]] = {}
+    next_run: dict[str, str] = {}
     if db_path.exists():
         from duckpipe.state import StateStore
 
@@ -89,22 +122,36 @@ def show(
                 row = store.last_status(t.name)
                 if row:
                     last_status[t.name] = (row[0], str(row[1]))
+                if would_skip(store, t, fingerprints[t.name]):
+                    next_run[t.name] = "skip (unchanged)"
+                elif not t.cache:
+                    next_run[t.name] = "run (not cached)"
+                else:
+                    next_run[t.name] = "run (changed)"
+    else:
+        next_run = {t.name: "run (no prior state)" for t in order}
 
     table = Table(title=f"DAG: {pipeline}")
     table.add_column("task")
     table.add_column("depends on")
     table.add_column("last status")
     table.add_column("last run")
+    table.add_column("next run")
     for t in order:
         deps = ", ".join(sorted(u.name for u in t.upstream_tasks())) or "-"
         status, ts = last_status.get(t.name, ("-", "-"))
         style = _STATUS_STYLE.get(status, "")
         rendered = f"[{style}]{status}[/{style}]" if style else status
-        table.add_row(t.name, deps, rendered, ts)
+        next_style = "yellow" if next_run[t.name].startswith("skip") else ""
+        next_rendered = (
+            f"[{next_style}]{next_run[t.name]}[/{next_style}]" if next_style else next_run[t.name]
+        )
+        table.add_row(t.name, deps, rendered, ts, next_rendered)
     console.print(table)
 
 
 @app.command()
+@_friendly_errors
 def stats(
     db: Annotated[Path, typer.Argument(exists=True, help="Path to a duckpipe.db state file")],
     limit: Annotated[int, typer.Option(help="Number of recent runs to show")] = 20,
@@ -125,17 +172,11 @@ def stats(
     console.print(runs_table)
 
     task_stats = con.execute(
-        """
-        SELECT task_name,
-               count(*) AS runs,
-               avg(duration_ms) AS avg_ms,
-               max(duration_ms) AS max_ms,
-               sum(CASE WHEN skipped THEN 1 ELSE 0 END) AS skipped
-        FROM task_runs GROUP BY task_name ORDER BY avg_ms DESC
-        """
+        "SELECT task_name, runs, avg_duration_ms, max_duration_ms, skipped_count, failed_count "
+        "FROM v_task_stats ORDER BY avg_duration_ms DESC"
     ).fetchall()
-    stats_table = Table(title="per-task stats")
-    for col in ("task", "runs", "avg_ms", "max_ms", "skipped"):
+    stats_table = Table(title="per-task stats (from v_task_stats)")
+    for col in ("task", "runs", "avg_ms", "max_ms", "skipped", "failed"):
         stats_table.add_column(col)
     for row in task_stats:
         stats_table.add_row(*(f"{v:.1f}" if isinstance(v, float) else str(v) for v in row))

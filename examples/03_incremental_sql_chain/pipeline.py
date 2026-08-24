@@ -10,6 +10,11 @@ Each stage returns a plain, picklable `polars.DataFrame` rather than a
 live DuckDB relation -- that's what makes `cache=True` meaningful here:
 skipping a stage means literally reusing last run's DataFrame from
 `duckpipe.db`, no DuckDB connection involved at all on a cache hit.
+Tabular results like these are also exactly what the optional
+`cache_backend="arrow"` (ROADMAP.md sec 6.2) is for -- swap it in on any
+`@task` here (e.g. `@task(cache=True, cache_backend="arrow")`) for a
+leaner on-disk cache than pickle; a cache hit then hands back a plain
+`pyarrow.Table` instead of the original DataFrame type.
 
 Run it twice -- the second run reports every stage "skipped":
 

@@ -28,6 +28,39 @@ def test_cache_roundtrip_with_arbitrary_python_object(tmp_path):
         assert store.get_cached("t", "fp1") == {"a": [1, 2, 3]}
 
 
+def test_arrow_cache_backend_roundtrips_a_polars_dataframe(tmp_path):
+    import polars as pl
+
+    df = pl.DataFrame({"a": [1, 2, 3], "b": ["x", "y", "z"]})
+    with StateStore(tmp_path / "state.duckdb") as store:
+        store.set_cached("t", "fp1", df, backend="arrow")
+        result = store.get_cached("t", "fp1")
+
+    # A cache hit under the arrow backend always hands back a plain
+    # pyarrow.Table (ROADMAP.md sec 6.2) regardless of the original type.
+    assert pl.from_arrow(result).equals(df)
+
+
+def test_arrow_cache_backend_roundtrips_a_duckdb_relation(tmp_path):
+    import duckdb
+    import pyarrow as pa
+
+    rel = duckdb.sql("SELECT 1 AS x, 'a' AS y UNION ALL SELECT 2, 'b'")
+    with StateStore(tmp_path / "state.duckdb") as store:
+        store.set_cached("t", "fp1", rel, backend="arrow")
+        result = store.get_cached("t", "fp1")
+
+    assert isinstance(result, pa.Table)
+    assert result.to_pylist() == [{"x": 1, "y": "a"}, {"x": 2, "y": "b"}]
+
+
+def test_unknown_cache_backend_raises_a_clear_error(tmp_path):
+    import pytest
+
+    with StateStore(tmp_path / "state.duckdb") as store, pytest.raises(ValueError, match="nope"):
+        store.set_cached("t", "fp1", 123, backend="nope")
+
+
 def test_lineage_replaces_on_rerecord(tmp_path):
     with StateStore(tmp_path / "state.duckdb") as store:
         store.record_lineage("b", ["a"])

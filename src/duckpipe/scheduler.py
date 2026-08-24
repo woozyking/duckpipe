@@ -27,7 +27,8 @@ from duckpipe.task import Task
 
 logger = logging.getLogger("duckpipe")
 
-Status = Literal["success", "skipped", "failed"]
+Status = Literal["success", "skipped", "failed", "upstream_failed"]
+_FAILURE_STATUSES = ("failed", "upstream_failed")
 
 
 @dataclass
@@ -40,10 +41,21 @@ class RunSummary:
 
     @property
     def success(self) -> bool:
-        return all(s != "failed" for s in self.statuses.values())
+        return all(s not in _FAILURE_STATUSES for s in self.statuses.values())
 
     def __repr__(self) -> str:
         return f"RunSummary(run_id={self.run_id!r}, statuses={self.statuses!r})"
+
+
+def would_skip(store: StateStore, t: Task, fingerprint: str) -> bool:
+    """Whether ``t`` would be skipped (cache hit) if run right now with this
+    fingerprint. Shared by the scheduler's actual skip check and
+    ``duckpipe show``'s "what would happen next" preview, so the two can
+    never silently disagree.
+    """
+    if not t.cache or store.get_fingerprint(t.name) != fingerprint:
+        return False
+    return store.has_cached(t.name, fingerprint)
 
 
 async def _run_with_retries(t: Task, kwargs: dict[str, Any]) -> Any:
@@ -80,22 +92,39 @@ async def _execute_dag(
     async def run_node(t: Task) -> None:
         for up in t.upstream_tasks():
             await pending[up.name]
-        if any(summary.statuses.get(up.name) == "failed" for up in t.upstream_tasks()):
-            summary.statuses[t.name] = "failed"
-            summary.errors[t.name] = "upstream task failed"
-            return
 
         fp = fingerprints[t.name]
         store.record_lineage(t.name, [u.name for u in t.upstream_tasks()])
+
+        failed_upstream = [
+            up.name
+            for up in t.upstream_tasks()
+            if summary.statuses.get(up.name) in _FAILURE_STATUSES
+        ]
+        if failed_upstream:
+            ts = now()
+            summary.statuses[t.name] = "upstream_failed"
+            summary.errors[t.name] = f"upstream task(s) failed: {', '.join(failed_upstream)}"
+            # Recorded even though this task never ran, so `task_runs` --
+            # and therefore resume on a later invocation, which relies on
+            # this task having no recorded fingerprint/cache -- reflects
+            # what actually happened (ROADMAP.md sec 11, "partial-DAG
+            # resume... using the same fingerprint mechanism").
+            store.record_task_run(
+                run_id, t.name, "upstream_failed", ts, ts, fp, error=summary.errors[t.name]
+            )
+            logger.error("task %s skipped: %s", t.name, summary.errors[t.name])
+            return
 
         # Skip-if-unchanged (tenet #6) only fires when there's a cached
         # value to skip *to* -- fingerprints are always recorded for
         # lineage/observability, but a task without cache=True has nothing
         # to hand downstream tasks without re-running.
-        unchanged = store.get_fingerprint(t.name) == fp
-        if not force and t.cache and unchanged and store.has_cached(t.name, fp):
+        if not force and would_skip(store, t, fp):
+            ts = now()
             summary.results[t.name] = store.get_cached(t.name, fp)
             summary.statuses[t.name] = "skipped"
+            store.record_task_run(run_id, t.name, "skipped", ts, ts, fp)
             logger.info("task %s skipped (unchanged)", t.name)
             return
 
