@@ -137,9 +137,12 @@ DuckDB/Polars pair (`duck.py`/`pl.py`) that stays lazy/streaming end to
 end; one dedicated example that deliberately materializes mid-pipeline
 and explains exactly why; a real multi-process distributed cluster run
 using nothing but DuckPipe's own delta-merge mechanism, plus the same
-coordination problem solved with DuckLake instead; and a DuckLake
+coordination problem solved with DuckLake instead; a DuckLake
 observability example showing time travel over run history and
-schema-evolution-with-no-migration concretely. Every non-distributed
+schema-evolution-with-no-migration concretely; and a serverless-executor
+example dispatching one run across two genuinely different invocation
+shapes — a container and a `handler(event, context)` function — to make
+the "not locked to one platform" claim checkable. Every non-distributed
 example also runs unmodified against the full public dataset by setting
 one environment variable; see
 [`examples/data/README.md`](examples/data/README.md).
@@ -219,6 +222,28 @@ for time travel and schema evolution demonstrated concretely. Needs
 `uv add "duckpipe[ducklake]"` (just `pytz`; the `ducklake`/`sqlite`
 DuckDB extensions themselves install on first use, over the network).
 
+## Serverless executor and beefy-node mode
+
+Both remaining Phase 3 extensions turned out to need no new mechanism —
+just checking that what Phase 3a already shipped genuinely isn't tied to
+one platform or one coordination model:
+
+- **Serverless executor.** `duckpipe.run(module, only=task,
+  state_uri=...)` *is* the reference executor — a plain Python call with
+  no platform-specific glue. [`examples/07_serverless_executor`](examples/07_serverless_executor/)
+  proves it by dispatching one DAG's two tasks into the same distributed
+  run through two genuinely different invocation shapes: a container
+  (`docker run`, argv-invoked — ECS/Cloud Run/a Kubernetes Job call the
+  same way) and a `handler(event, context)` function (the FaaS calling
+  convention Lambda/Modal/Cloud Functions actually use). Neither
+  `pipeline.py` nor DuckPipe itself knows or cares which one dispatched
+  it.
+- **Beefy-node mode.** One job too large for a laptop but not worth
+  distributing: the same code, unchanged, on a bigger remote machine —
+  `rsync` it over, `ssh` in, run the same command, optionally sized with
+  the `duckpipe-tuning` helpers below. See
+  [`docs/remote_execution.md`](docs/remote_execution.md).
+
 ## Tuning (optional, separate package)
 
 `duckpipe-tuning` suggests DuckDB `threads`/`memory_limit` settings from
@@ -245,6 +270,8 @@ con.execute(f"SET memory_limit = '{settings['memory_limit']}'")
   webhook recipes.
 - [`docs/interop.md`](docs/interop.md) — embedding a pipeline inside
   Airflow/Dagster/Prefect.
+- [`docs/remote_execution.md`](docs/remote_execution.md) — running a
+  pipeline unchanged on a bigger remote machine (Phase 3d).
 - [`ROADMAP.md`](ROADMAP.md) — the full design rationale, prior-art
   landscape check, and phased plan this implementation follows.
 
@@ -267,9 +294,9 @@ PR — also a live example of the GitHub Actions trigger recipe above.
 ## Status
 
 Pre-1.0, working name (see [`ROADMAP.md`](ROADMAP.md) §0/§12 for the open
-naming question). Phases 0-2.5, Phase 3a (task-scoped distributed
-execution), and Phase 3b (DuckLake observability upgrade) are implemented
-and covered by the test suite, examples, and docs above; see
-`ROADMAP.md` §11 for what's done and what's next (Phase 3c/3d: serverless
-executor, beefy-node mode; Phase 4: WASM/browser, spike done but not yet
-a committed deliverable).
+naming question). Phases 0-2.5 and all of Phase 3 (3a task-scoped
+distributed execution, 3b DuckLake observability upgrade, 3c serverless
+executor, 3d beefy-node mode) are implemented and covered by the test
+suite, examples, and docs above; see `ROADMAP.md` §11 for what's done and
+what's next (Phase 4: WASM/browser, spike done but not yet a committed
+deliverable).

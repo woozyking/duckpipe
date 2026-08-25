@@ -5,7 +5,7 @@ taxi sample -- no network required -- so they're as fast and hermetic as
 the rest of the suite (except 04/05, which need the `duckpipe` console
 script and the `ducklake`/`sqlite` DuckDB extensions on PATH -- both are
 available in this dev environment, but 05 does need network on a cold
-extension cache).
+extension cache; and 07, which needs a working `docker` daemon).
 """
 
 import shutil
@@ -17,6 +17,13 @@ import pytest
 from duckpipe.scheduler import run
 
 EXAMPLES = Path(__file__).parent.parent / "examples"
+
+
+def _docker_available() -> bool:
+    try:
+        return subprocess.run(["docker", "info"], capture_output=True, timeout=10).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
 
 
 @pytest.mark.parametrize("engine", ["duck", "pl"])
@@ -105,6 +112,39 @@ def test_distributed_with_ducklake_example(tmp_path):
     finally:
         (example / "catalog.sqlite").unlink(missing_ok=True)
         shutil.rmtree(example / "data", ignore_errors=True)
+
+
+@pytest.mark.skipif(not _docker_available(), reason="needs a working docker daemon")
+def test_serverless_executor_example():
+    example = EXAMPLES / "07_serverless_executor"
+    bucket = example / "serverless_bucket"
+    scratch = example / "duckpipe.db"
+    root = EXAMPLES.parent
+    try:
+        build = subprocess.run(
+            ["docker", "build", "-f", "examples/07_serverless_executor/Dockerfile", "-t",
+             "duckpipe-worker", "."],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert build.returncode == 0, build.stdout + build.stderr
+
+        result = subprocess.run(
+            ["uv", "run", "python", "run_serverless_demo.py"],
+            cwd=example,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "container worker for 'extract'" in result.stdout
+        assert "function worker for 'summarize'" in result.stdout
+        assert "extract" in result.stdout and "summarize" in result.stdout
+    finally:
+        shutil.rmtree(bucket, ignore_errors=True)
+        scratch.unlink(missing_ok=True)
 
 
 def test_ducklake_observability_example():

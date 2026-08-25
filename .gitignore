@@ -25,3 +25,4 @@ examples/05_distributed_with_ducklake/catalog.sqlite
 examples/05_distributed_with_ducklake/data/
 examples/**/*.ducklake.sqlite
 examples/**/*.ducklake.sqlite.data/
+examples/07_serverless_executor/serverless_bucket/
