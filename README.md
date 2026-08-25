@@ -95,9 +95,10 @@ still being resolved — is in [`ROADMAP.md`](ROADMAP.md) §5, §11, §12.
 ## CLI
 
 ```bash
-duckpipe run pipeline.py [--db PATH] [--state-uri URI] [--force] [--max-workers N]
-duckpipe show pipeline.py [--db PATH]      # resolved DAG, last-run status, and what the *next* run would do
-duckpipe stats duckpipe.db [--limit N]     # recent runs + per-task timing, from pre-built SQL views
+duckpipe run pipeline.py [--db PATH] [--state-uri URI] [--force] [--max-workers N] [--only TASK]
+duckpipe show pipeline.py [--db PATH] [--json]   # resolved DAG, last-run status, and what the *next* run would do
+duckpipe stats duckpipe.db [--limit N]           # recent runs + per-task timing, from pre-built SQL views
+duckpipe compact state_uri                       # fold distributed workers' pending state into one file
 ```
 
 A malformed pipeline (a dependency cycle, two tasks sharing a name) is
@@ -120,10 +121,13 @@ Realistic pipelines over real, bundled open data (NYC TLC taxi trips)
 live in [`examples/`](examples/README.md): a daily batch ETL and a
 fan-out-over-partitions pipeline, each shipped as an apples-to-apples
 DuckDB/Polars pair (`duck.py`/`pl.py`) that stays lazy/streaming end to
-end, plus one dedicated example that deliberately materializes
-mid-pipeline and explains exactly why. Every one of them also runs
-unmodified against the full public dataset by setting one environment
-variable; see [`examples/data/README.md`](examples/data/README.md).
+end; one dedicated example that deliberately materializes mid-pipeline
+and explains exactly why; and two distributed examples — the same DAG
+dispatched across real worker processes, first with nothing but
+DuckPipe's own delta-merge mechanism, then with DuckLake as "the obvious
+next increment," tradeoffs included. Every non-distributed example also
+runs unmodified against the full public dataset by setting one
+environment variable; see [`examples/data/README.md`](examples/data/README.md).
 
 ## Scaling to remote storage
 
@@ -147,6 +151,32 @@ Embedding a pipeline inside Airflow/Dagster/Prefect, or triggering it
 from cron/CI/Lambda/a webhook, follows the exact same "just call
 `duckpipe.run(...)`" shape — see [`docs/triggers.md`](docs/triggers.md)
 and [`docs/interop.md`](docs/interop.md) for working recipes.
+
+## Distributed execution
+
+`only=<task>` (`--only` on the CLI) runs exactly one task instead of the
+whole DAG — the same command every trigger already calls, just narrower
+in scope. Against a `state_uri`, a scoped run never takes the whole-file
+lock above: it writes only its own new rows to a uniquely-keyed delta
+file instead of re-uploading the whole state file, so many workers can
+each run `--only` concurrently — on different tasks, or even the same
+task redundantly — with no contention at all.
+
+```bash
+duckpipe run pipeline.py --only extract --state-uri s3://my-bucket/pipelines/daily/duckpipe.db
+```
+
+Something else decides which worker runs which task and in what order —
+`duckpipe show --json` is the discovery primitive a coordinator needs
+(topological order + which tasks would skip). `duckpipe compact
+state_uri` folds workers' pending deltas into the canonical file — not
+needed for correctness (every invocation already absorbs what's pending
+itself), just for keeping `.pending/` from growing forever in a purely
+distributed workflow that never does a whole run. See
+[`examples/04_distributed_cluster`](examples/04_distributed_cluster/)
+for a real multi-process cluster run, and
+[`examples/05_distributed_with_ducklake`](examples/05_distributed_with_ducklake/)
+for the DuckLake-backed alternative.
 
 ## Tuning (optional, separate package)
 
@@ -196,6 +226,7 @@ PR — also a live example of the GitHub Actions trigger recipe above.
 ## Status
 
 Pre-1.0, working name (see [`ROADMAP.md`](ROADMAP.md) §0/§12 for the open
-naming question). Phases 0-2.5 of the roadmap are implemented and covered
-by the test suite, examples, and docs above; see `ROADMAP.md` §11 for
-what's done and what's next (Phase 3: distributed/serverless execution).
+naming question). Phases 0-2.5 plus Phase 3a (task-scoped distributed
+execution) are implemented and covered by the test suite, examples, and
+docs above; see `ROADMAP.md` §11 for what's done and what's next
+(Phase 3b-e: DuckLake backend, serverless executor, beefy-node mode, WASM).

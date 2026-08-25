@@ -16,6 +16,13 @@ through fsspec's standard exclusive-create (``"x"``) file mode -- no
 server, no catalog database. See ROADMAP.md sec 12, open question #5 for
 why this beat both a persistent Quack server and a full DuckLake catalog
 for this specific problem.
+
+``write_delta()``/``absorb_pending()`` extend the same idea to Phase 3a's
+task-scoped (``only=``) runs (ROADMAP.md sec 8): instead of contending
+for the whole state file, a scoped run drops its own new rows in a
+uniquely-named file under ``<state_uri>.pending/`` -- a unique key can
+never collide with anyone else's, so this needs no lock at all -- and any
+whole-file sync absorbs whatever's pending first.
 """
 
 from __future__ import annotations
@@ -25,7 +32,10 @@ import json
 import logging
 import os
 import socket
+import tempfile
 import time
+import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -63,6 +73,11 @@ def locked(state_uri: str, *, max_lock_age: float = DEFAULT_MAX_LOCK_AGE):
 
     fs, lock_path = fsspec.core.url_to_fs(_lock_uri(state_uri))
     payload = json.dumps({"holder": _holder_id(), "acquired_at": time.time()}).encode()
+
+    # Local filesystems need the parent directory to exist before an
+    # exclusive create; object stores have no such concept, so this is a
+    # no-op there.
+    fs.makedirs(fs._parent(lock_path), exist_ok=True)
 
     try:
         with fs.open(lock_path, "xb") as f:
@@ -110,4 +125,75 @@ def sync_up(state_uri: str, local_path: str | Path) -> None:
     import fsspec
 
     fs, remote_path = fsspec.core.url_to_fs(state_uri)
+    fs.makedirs(fs._parent(remote_path), exist_ok=True)
     fs.put_file(str(local_path), remote_path)
+
+
+def _pending_prefix(state_uri: str) -> str:
+    return state_uri + ".pending/"
+
+
+def write_delta(state_uri: str, local_delta_path: str | Path) -> None:
+    """Upload one scoped (``only=``) run's own new rows as a uniquely-keyed
+    object under ``<state_uri>.pending/`` -- never a name anyone else could
+    also pick, so this never needs a lock."""
+    import fsspec
+
+    fs, prefix = fsspec.core.url_to_fs(_pending_prefix(state_uri))
+    fs.makedirs(prefix, exist_ok=True)
+    fs.put_file(str(local_delta_path), f"{prefix.rstrip('/')}/{uuid.uuid4().hex}.duckdb")
+
+
+def absorb_pending(state_uri: str, merge: Callable[[Path], None], *, delete: bool = False) -> None:
+    """Merge every pending delta under ``<state_uri>.pending/`` by calling
+    ``merge(local_path)`` once per file. ``merge`` is typically
+    ``StateStore.absorb_delta``; kept as a callback here so this module
+    stays fsspec-only and never needs to import ``state.py``.
+
+    ``delete=False`` (the default, used by scoped ``only=`` runs) leaves
+    every delta in place: a scoped run only ever merges into its own local
+    scratch copy, and deleting what it just read would rob any other
+    worker that hasn't started yet of the only durable copy of that fact.
+    ``delete=True`` is only for a whole-run absorb (``run()`` without
+    ``only=``, or ``compact()``): it's about to re-upload a fully merged
+    file under the whole-run lock, which is what actually makes deleting
+    the now-redundant deltas safe.
+    """
+    import fsspec
+
+    fs, prefix = fsspec.core.url_to_fs(_pending_prefix(state_uri))
+    try:
+        pending = [p for p in fs.ls(prefix, detail=False) if p.endswith(".duckdb")]
+    except FileNotFoundError:
+        return
+
+    for obj in pending:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            local = Path(tmp_dir) / "delta.duckdb"
+            fs.get_file(obj, str(local))
+            merge(local)
+        if delete:
+            fs.rm(obj)
+
+
+def compact(state_uri: str, *, db_path: str | Path | None = None, lock: bool = True) -> None:
+    """Fold every pending delta into the canonical state file and clean up
+    ``.pending/``. Nothing requires this -- every invocation already
+    absorbs pending deltas itself -- but a purely distributed workflow
+    (many ``--only`` workers, no whole-run ever) never otherwise re-uploads
+    the canonical file, so ``.pending/`` only grows. Safe to run anytime,
+    e.g. periodically from cron alongside the pipeline itself.
+    """
+    import tempfile as _tempfile
+
+    from duckpipe.state import StateStore
+
+    with _tempfile.TemporaryDirectory() as tmp_dir:
+        local_path = Path(db_path) if db_path is not None else Path(tmp_dir) / "duckpipe.db"
+        with contextlib.ExitStack() as stack:
+            if lock:
+                stack.enter_context(locked(state_uri))
+            sync_down(state_uri, local_path)
+            with StateStore(local_path) as store:
+                absorb_pending(state_uri, store.absorb_delta, delete=True)
+            sync_up(state_uri, local_path)

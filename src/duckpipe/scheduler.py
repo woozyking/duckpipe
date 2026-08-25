@@ -23,13 +23,23 @@ from typing import Any, Literal
 
 from duckpipe.dag import DAG, build_dag
 from duckpipe.fingerprint import resolve_fingerprints
-from duckpipe.state import LARGE_CACHE_WARN_BYTES, StateStore, now
+from duckpipe.state import LARGE_CACHE_WARN_BYTES, StateStore, new_run_id, now
 from duckpipe.task import Task
 
 logger = logging.getLogger("duckpipe")
 
 Status = Literal["success", "skipped", "failed", "upstream_failed"]
 _FAILURE_STATUSES = ("failed", "upstream_failed")
+
+
+class UpstreamNotReadyError(RuntimeError):
+    """A scoped (``only=``) run's upstream task hasn't completed with its
+    current code yet -- the coordinator dispatched it out of order."""
+
+
+class UpstreamNotCachedError(RuntimeError):
+    """A scoped (``only=``) run needs an upstream task's *value*, but that
+    upstream has no ``cache=True`` to have persisted one."""
 
 
 @dataclass
@@ -188,6 +198,84 @@ async def _execute_dag(
     return summary
 
 
+async def _execute_one(
+    target: Task,
+    fingerprints: dict[str, str],
+    read_store: StateStore,
+    write_store: StateStore,
+    run_id: str,
+    module_path: str,
+    force: bool,
+) -> RunSummary:
+    """Run exactly one task (Phase 3a's ``only=``), reading upstream state
+    from ``read_store`` and recording this task's own outcome to
+    ``write_store`` -- the same object in local mode, a fresh scratch file
+    destined to become a delta in distributed mode (see ``run()``).
+    """
+    summary = RunSummary(run_id=run_id, db_path=read_store.db_path)
+    fp = fingerprints[target.name]
+    upstream = target.upstream_tasks()
+
+    for up in upstream:
+        if read_store.get_fingerprint(up.name) != fingerprints[up.name]:
+            raise UpstreamNotReadyError(
+                f"{up.name!r} hasn't completed with its current code yet -- "
+                f"dispatch it before {target.name!r}"
+            )
+
+    write_store.start_run(module_path, run_id)
+    write_store.record_lineage(target.name, [u.name for u in upstream])
+
+    if not force and would_skip(read_store, target, fp):
+        ts = now()
+        summary.results[target.name] = read_store.get_cached(target.name, fp)
+        summary.statuses[target.name] = "skipped"
+        write_store.record_task_run(run_id, target.name, "skipped", ts, ts, fp)
+        logger.info("task %s skipped (unchanged)", target.name)
+        return summary
+
+    kwargs: dict[str, Any] = {}
+    for pname, up in target.upstream_params().items():
+        if not up.cache:
+            raise UpstreamNotCachedError(
+                f"{target.name!r} depends on {up.name!r} for data, but "
+                f"{up.name!r} has no cache=True -- a scoped (--only) run "
+                f"can't get its output without a cached value to read"
+            )
+        kwargs[pname] = read_store.get_cached(up.name, fingerprints[up.name])
+
+    started = now()
+    try:
+        value = await _run_with_retries(target, kwargs)
+    except Exception as exc:
+        ended = now()
+        summary.statuses[target.name] = "failed"
+        summary.errors[target.name] = str(exc)
+        write_store.record_task_run(
+            run_id, target.name, "failed", started, ended, fp, error=str(exc)
+        )
+        logger.error("task %s failed: %s", target.name, exc)
+        return summary
+
+    ended = now()
+    summary.results[target.name] = value
+    summary.statuses[target.name] = "success"
+    write_store.record_task_run(run_id, target.name, "success", started, ended, fp)
+    write_store.set_fingerprint(target.name, fp)
+    if target.cache:
+        try:
+            write_store.set_cached(target.name, fp, value, backend=target.cache_backend)
+        except Exception as exc:
+            logger.warning(
+                "task %s succeeded but its output could not be cached (%s: %s)",
+                target.name,
+                type(exc).__name__,
+                exc,
+            )
+    logger.info("task %s finished in %.1fms", target.name, (ended - started).total_seconds() * 1000)
+    return summary
+
+
 def _module_path(source: str | Path | ModuleType) -> str:
     if isinstance(source, ModuleType):
         return getattr(source, "__file__", None) or "<module>"
@@ -218,6 +306,74 @@ def _build_and_execute(
     return summary
 
 
+def _absorb_pending(state_uri: str, db_path: Path, *, delete: bool) -> None:
+    from duckpipe.remote import absorb_pending
+
+    with StateStore(db_path) as store:
+        absorb_pending(state_uri, store.absorb_delta, delete=delete)
+
+
+def _run_scoped(
+    source: str | Path | ModuleType,
+    resolved_db_path: Path,
+    state_uri: str | None,
+    only: str,
+    force: bool,
+    run_id: str | None,
+) -> RunSummary:
+    if state_uri:
+        from duckpipe.remote import sync_down
+
+        sync_down(state_uri, resolved_db_path)
+        # A scoped run never re-uploads the canonical file, so it must
+        # never delete the deltas it reads either -- see absorb_pending's
+        # docstring for why deletion is only safe from a whole-run absorb.
+        _absorb_pending(state_uri, resolved_db_path, delete=False)
+
+    dag = build_dag(source)
+    if only not in dag.tasks:
+        raise ValueError(f"no task named {only!r} in {_module_path(source)}")
+
+    order = dag.topological_order()
+    fingerprints = resolve_fingerprints(order)
+    target = dag.tasks[only]
+    run_id = run_id or new_run_id()
+    module_path = _module_path(source)
+
+    # Local mode: read and write the one shared file directly, same as a
+    # whole run -- there's only one process, one file, DuckDB's own OS
+    # lock already covers it. Distributed mode: read the (freshly absorbed)
+    # shared file, but write this task's own new rows to a fresh scratch
+    # file instead -- that's what gets shipped as a delta, so this scoped
+    # run never touches or uploads the big shared file at all.
+    delta_path = resolved_db_path.with_suffix(".delta.duckdb") if state_uri else resolved_db_path
+    if state_uri:
+        delta_path.unlink(missing_ok=True)
+
+    with StateStore(resolved_db_path) as read_store:
+        if state_uri:
+            with StateStore(delta_path) as write_store:
+                summary = asyncio.run(
+                    _execute_one(
+                        target, fingerprints, read_store, write_store, run_id, module_path, force
+                    )
+                )
+        else:
+            summary = asyncio.run(
+                _execute_one(
+                    target, fingerprints, read_store, read_store, run_id, module_path, force
+                )
+            )
+
+    if state_uri:
+        from duckpipe.remote import write_delta
+
+        write_delta(state_uri, delta_path)
+        delta_path.unlink(missing_ok=True)
+
+    return summary
+
+
 def run(
     source: str | Path | ModuleType,
     *,
@@ -226,6 +382,8 @@ def run(
     force: bool = False,
     max_workers: int | None = None,
     lock: bool = True,
+    only: str | None = None,
+    run_id: str | None = None,
 ) -> RunSummary:
     """Run a pipeline end-to-end: build its DAG, execute it, record state.
 
@@ -241,8 +399,25 @@ def run(
     invocations against the same ``state_uri`` raise ``StateLockedError``
     instead of silently racing (ROADMAP.md sec 12, open question #5). Pass
     ``lock=False`` to opt back into the old unlocked behavior.
+
+    Pass ``only=<task name>`` to run exactly that one task instead of the
+    whole DAG (ROADMAP.md sec 8, Phase 3a) -- the primitive many stateless
+    workers use to cooperate on one DAG. A scoped run needs its upstream
+    tasks to have already completed with their current code (raises
+    ``UpstreamNotReadyError`` otherwise) and, for any it needs data from,
+    to have ``cache=True`` (raises ``UpstreamNotCachedError`` otherwise).
+    Against a ``state_uri``, a scoped run never takes the whole-file lock:
+    it writes only its own new rows to a uniquely-keyed delta file instead
+    of re-uploading the whole state file, so many workers can each run
+    ``--only`` concurrently, on different tasks or even the same one
+    redundantly (fingerprint-based skip makes that harmless). Pass the same
+    ``run_id`` to every scoped call in one distributed run so they group
+    together once merged; omitted, each gets its own.
     """
     resolved_db_path = Path(db_path) if db_path is not None else _default_db_path(source)
+
+    if only is not None:
+        return _run_scoped(source, resolved_db_path, state_uri, only, force, run_id)
 
     if not state_uri:
         return _build_and_execute(source, resolved_db_path, force, max_workers)
@@ -253,6 +428,10 @@ def run(
         if lock:
             stack.enter_context(locked(state_uri))
         sync_down(state_uri, resolved_db_path)
+        # A whole-run is about to re-upload a fully merged file under the
+        # lock, which is what makes it safe to also clean up the deltas
+        # it just folded in (unlike a scoped run's read-only absorb).
+        _absorb_pending(state_uri, resolved_db_path, delete=True)
         summary = _build_and_execute(source, resolved_db_path, force, max_workers)
         sync_up(state_uri, resolved_db_path)
 

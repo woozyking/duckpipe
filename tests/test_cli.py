@@ -53,3 +53,58 @@ def test_stats_command_runs_against_a_state_file(tmp_path):
     result = runner.invoke(app, ["stats", str(db_path)])
     assert result.exit_code == 0
     assert "per-task stats" in result.stdout
+
+
+def test_show_json_lists_topological_order_for_a_coordinator(tmp_path):
+    result = runner.invoke(app, ["show", str(FIXTURES / "toy_dag.py"), "--json"])
+    assert result.exit_code == 0
+
+    import json
+
+    rows = json.loads(result.stdout)
+    names = [r["task"] for r in rows]
+    assert names.index("extract") < names.index("transform_a")
+    assert names.index("transform_a") < names.index("load")
+
+
+def test_run_only_executes_a_single_task(tmp_path):
+    db_path = tmp_path / "state.duckdb"
+    result = runner.invoke(
+        app,
+        ["run", str(FIXTURES / "toy_dag.py"), "--db", str(db_path), "--only", "extract"],
+    )
+    assert result.exit_code == 0
+    assert "extract" in result.stdout
+    assert "transform_a" not in result.stdout
+
+
+def test_run_only_unknown_task_reports_a_friendly_error(tmp_path):
+    result = runner.invoke(
+        app,
+        ["run", str(FIXTURES / "toy_dag.py"), "--db", str(tmp_path / "s.duckdb"), "--only", "nope"],
+    )
+    assert result.exit_code == 1
+    assert "Traceback" not in result.stdout
+    assert "no task named" in result.stdout
+
+
+def test_compact_command_runs_against_a_state_uri(tmp_path):
+    bucket = tmp_path / "bucket"
+    state_uri = f"file://{bucket / 'duckpipe.db'}"
+    runner.invoke(
+        app,
+        [
+            "run",
+            str(FIXTURES / "toy_dag.py"),
+            "--db",
+            str(tmp_path / "scratch.duckdb"),
+            "--state-uri",
+            state_uri,
+            "--only",
+            "extract",
+        ],
+    )
+
+    result = runner.invoke(app, ["compact", state_uri])
+    assert result.exit_code == 0
+    assert "compacted" in result.stdout

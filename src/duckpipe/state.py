@@ -177,10 +177,20 @@ class StateStore:
 
     # -- pipeline-level ---------------------------------------------------
 
-    def start_run(self, module_path: str) -> str:
-        run_id = new_run_id()
+    def start_run(self, module_path: str, run_id: str | None = None) -> str:
+        """Start (or, with an explicit ``run_id``, join) a pipeline run.
+
+        A coordinator dispatching one distributed run as several scoped
+        (``only=``) invocations passes the same ``run_id`` to each so they
+        group under one row in ``pipeline_runs`` -- the insert is a no-op
+        if that row already exists, whether because another scoped
+        invocation already created it locally, or because it arrived via
+        ``absorb_delta`` from one that ran elsewhere.
+        """
+        run_id = run_id or new_run_id()
         self.con.execute(
-            "INSERT INTO pipeline_runs VALUES (?, ?, ?, NULL, 'running')",
+            "INSERT INTO pipeline_runs VALUES (?, ?, ?, NULL, 'running') "
+            "ON CONFLICT (run_id) DO NOTHING",
             [run_id, module_path, now()],
         )
         return run_id
@@ -292,3 +302,49 @@ class StateStore:
             [task_name, fingerprint, backend, payload, size, now()],
         )
         return size
+
+    # -- distributed (Phase 3a) ------------------------------------------
+
+    def absorb_delta(self, delta_path: str | Path) -> None:
+        """Merge a delta file -- the rows one scoped (``only=``) invocation
+        produced -- into this store. A delta is just another
+        ``duckpipe.db`` (same schema, via ``StateStore.__init__``), so
+        absorbing one is ``ATTACH`` plus a few ``INSERT``s, not a new
+        format. Every table merges idempotently, since the same delta
+        could plausibly be absorbed more than once (e.g. two whole-run
+        invocations racing to absorb the same pending file).
+        """
+        self.con.execute(f"ATTACH '{delta_path}' AS _delta (READ_ONLY)")
+        try:
+            self.con.execute(
+                "INSERT INTO pipeline_runs SELECT * FROM _delta.pipeline_runs "
+                "ON CONFLICT (run_id) DO NOTHING"
+            )
+            self.con.execute(
+                "INSERT INTO task_runs SELECT * FROM _delta.task_runs t "
+                "WHERE NOT EXISTS ("
+                "  SELECT 1 FROM task_runs m WHERE m.run_id = t.run_id "
+                "  AND m.task_name = t.task_name AND m.attempt = t.attempt"
+                ")"
+            )
+            self.con.execute(
+                "INSERT INTO task_fingerprints SELECT * FROM _delta.task_fingerprints "
+                "ON CONFLICT (task_name) DO UPDATE SET "
+                "fingerprint = excluded.fingerprint, updated_at = excluded.updated_at"
+            )
+            self.con.execute(
+                "INSERT INTO task_cache SELECT * FROM _delta.task_cache "
+                "ON CONFLICT (task_name, fingerprint) DO NOTHING"
+            )
+            # task_lineage has no primary key (a task's upstream set is
+            # replaced wholesale on every record_lineage() call, matching
+            # what record_lineage itself does locally) -- delete-then-insert
+            # per task_name so re-absorbing the same delta never duplicates.
+            names = self.con.execute(
+                "SELECT DISTINCT task_name FROM _delta.task_lineage"
+            ).fetchall()
+            for (name,) in names:
+                self.con.execute("DELETE FROM task_lineage WHERE task_name = ?", [name])
+            self.con.execute("INSERT INTO task_lineage SELECT * FROM _delta.task_lineage")
+        finally:
+            self.con.execute("DETACH _delta")

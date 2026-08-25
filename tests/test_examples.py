@@ -2,10 +2,14 @@
 3-5 realistic example pipelines... have someone unfamiliar with the
 project try them cold"). These run entirely against the bundled NYC TLC
 taxi sample -- no network required -- so they're as fast and hermetic as
-the rest of the suite.
+the rest of the suite (except 04/05, which need the `duckpipe` console
+script and the `ducklake`/`sqlite` DuckDB extensions on PATH -- both are
+available in this dev environment, but 05 does need network on a cold
+extension cache).
 """
 
 import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -63,3 +67,41 @@ def test_mid_pipeline_materialization_example(tmp_path):
         assert second.statuses["report"] == "success"
     finally:
         report.unlink(missing_ok=True)
+
+
+def test_distributed_cluster_example(tmp_path):
+    example = EXAMPLES / "04_distributed_cluster"
+    bucket = example / "cluster_bucket"
+    try:
+        result = subprocess.run(
+            ["uv", "run", "python", "run_cluster.py"],
+            cwd=example,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "combined_report" in result.stdout
+        assert (bucket / "duckpipe.db").exists()
+    finally:
+        shutil.rmtree(bucket, ignore_errors=True)
+        for scratch in example.glob("_scratch_*.duckdb"):
+            scratch.unlink()
+
+
+def test_distributed_with_ducklake_example(tmp_path):
+    example = EXAMPLES / "05_distributed_with_ducklake"
+    try:
+        result = subprocess.run(
+            ["uv", "run", "python", "ducklake_cluster.py"],
+            cwd=example,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "combined_report" in result.stdout
+        assert "success" in result.stdout
+    finally:
+        (example / "catalog.sqlite").unlink(missing_ok=True)
+        shutil.rmtree(example / "data", ignore_errors=True)

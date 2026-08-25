@@ -20,3 +20,6 @@ examples/**/warehouse.duckdb
 examples/**/output/
 examples/**/report.csv
 examples/data/full/
+examples/04_distributed_cluster/cluster_bucket/
+examples/05_distributed_with_ducklake/catalog.sqlite
+examples/05_distributed_with_ducklake/data/
