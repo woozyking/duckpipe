@@ -105,3 +105,26 @@ def test_distributed_with_ducklake_example(tmp_path):
     finally:
         (example / "catalog.sqlite").unlink(missing_ok=True)
         shutil.rmtree(example / "data", ignore_errors=True)
+
+
+def test_ducklake_observability_example():
+    example = EXAMPLES / "06_ducklake_observability"
+    catalog = example / "pipeline.ducklake.sqlite"
+    data_dir = example / "pipeline.ducklake.sqlite.data"
+    try:
+        summary = run(example / "pipeline.py", db_path=f"ducklake:sqlite:{catalog}")
+        assert summary.success
+
+        result = subprocess.run(
+            ["uv", "run", "python", "explore_history.py"],
+            cwd=example,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "task extract succeeded" in result.stdout
+        assert "added `host` column" in result.stdout
+    finally:
+        catalog.unlink(missing_ok=True)
+        shutil.rmtree(data_dir, ignore_errors=True)

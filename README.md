@@ -52,18 +52,28 @@ uv add duckpipe                 # core: duckdb + typer + rich
 uv add "duckpipe[remote]"       # + fsspec, for state_uri sync
 uv add "duckpipe[s3]"           # + s3fs
 uv add "duckpipe[arrow]"        # + pyarrow, for cache_backend="arrow"
+uv add "duckpipe[ducklake]"     # + pytz, for the DuckLake observability backend
 uv add duckpipe-tuning          # optional, separate package -- see below
 ```
 
 ## The whole mental model
 
 - **`@task`** decorates a plain Python function. Any signature, any
-  return type — the core never inspects what a task returns.
+  return type — the core never inspects what a task returns. A
+  side-effect-only task (send a Slack alert, kick off a training run,
+  write a log line) is exactly as first-class as one that moves data:
+  just return `None`. Add `cache=True` if you want it to fire only once
+  per code/upstream change instead of on every re-run — the same
+  fingerprint mechanism that skips a data task skips a side effect too,
+  since neither ever depended on inspecting a return value. The one
+  caveat is the same one any retry-based system has: keep the side
+  effect idempotent if you set `retries>0`, since a retried attempt
+  could otherwise repeat part of it.
 - **Dependencies are inferred from default argument values**: writing
   `def b(x=a)` where `a` is another task tells DuckPipe `b` depends on
   `a`, and at run time `x` receives `a`'s actual result. Tasks with no
-  data dependency but a real ordering requirement use the
-  `@task(depends_on=[...])` escape hatch.
+  data dependency but a real ordering requirement — the common case for
+  side-effect tasks — use the `@task(depends_on=[...])` escape hatch.
 - **A pipeline is a Python module.** `duckpipe run pipeline.py` imports
   it once, discovers every `@task`-decorated function reachable from the
   module namespace, and runs the resulting DAG.
@@ -96,10 +106,13 @@ still being resolved — is in [`ROADMAP.md`](ROADMAP.md) §5, §11, §12.
 
 ```bash
 duckpipe run pipeline.py [--db PATH] [--state-uri URI] [--force] [--max-workers N] [--only TASK]
-duckpipe show pipeline.py [--db PATH] [--json]   # resolved DAG, last-run status, and what the *next* run would do
-duckpipe stats duckpipe.db [--limit N]           # recent runs + per-task timing, from pre-built SQL views
-duckpipe compact state_uri                       # fold distributed workers' pending state into one file
+duckpipe show pipeline.py [--db PATH] [--json]      # resolved DAG, last-run status, and what the *next* run would do
+duckpipe stats duckpipe.db [--limit N] [--snapshots] # recent runs + per-task timing, or DuckLake time travel
+duckpipe compact state_uri                          # fold distributed workers' pending state into one file
 ```
+
+`--db` accepts a plain path or a `ducklake:...` catalog string — see
+[DuckLake observability upgrade](#ducklake-observability-upgrade) below.
 
 A malformed pipeline (a dependency cycle, two tasks sharing a name) is
 reported as one short line, not a framework traceback. `duckpipe show`
@@ -122,12 +135,14 @@ live in [`examples/`](examples/README.md): a daily batch ETL and a
 fan-out-over-partitions pipeline, each shipped as an apples-to-apples
 DuckDB/Polars pair (`duck.py`/`pl.py`) that stays lazy/streaming end to
 end; one dedicated example that deliberately materializes mid-pipeline
-and explains exactly why; and two distributed examples — the same DAG
-dispatched across real worker processes, first with nothing but
-DuckPipe's own delta-merge mechanism, then with DuckLake as "the obvious
-next increment," tradeoffs included. Every non-distributed example also
-runs unmodified against the full public dataset by setting one
-environment variable; see [`examples/data/README.md`](examples/data/README.md).
+and explains exactly why; a real multi-process distributed cluster run
+using nothing but DuckPipe's own delta-merge mechanism, plus the same
+coordination problem solved with DuckLake instead; and a DuckLake
+observability example showing time travel over run history and
+schema-evolution-with-no-migration concretely. Every non-distributed
+example also runs unmodified against the full public dataset by setting
+one environment variable; see
+[`examples/data/README.md`](examples/data/README.md).
 
 ## Scaling to remote storage
 
@@ -178,6 +193,32 @@ for a real multi-process cluster run, and
 [`examples/05_distributed_with_ducklake`](examples/05_distributed_with_ducklake/)
 for the DuckLake-backed alternative.
 
+## DuckLake observability upgrade
+
+`db_path="ducklake:sqlite:pipeline.ducklake.sqlite"` — the same argument
+a plain file goes in, pointed at a different kind of string. Nothing
+else changes: `duckpipe run`/`show`/`stats` work exactly as before. What
+it buys is real snapshot history: every task's outcome becomes its own
+DuckLake commit, tagged with a plain-English message (`task extract
+succeeded`), so `task_runs AT (VERSION => n)` turns "what happened" into
+an actually-queryable history instead of a present-tense table — and
+`ALTER TABLE ... ADD COLUMN` needs no migration step.
+
+```bash
+duckpipe run pipeline.py --db "ducklake:sqlite:pipeline.ducklake.sqlite"
+duckpipe stats "ducklake:sqlite:pipeline.ducklake.sqlite" --snapshots
+```
+
+This is an *observability* upgrade, not a coordination one — deliberately
+unrelated to `state_uri`/`only=` above (both raise a clear error if
+combined with a `ducklake:` `db_path` rather than doing something
+ill-defined; see `ROADMAP.md` §8 for the three independently-verified
+reasons why one doesn't subsume the other). See
+[`examples/06_ducklake_observability`](examples/06_ducklake_observability/)
+for time travel and schema evolution demonstrated concretely. Needs
+`uv add "duckpipe[ducklake]"` (just `pytz`; the `ducklake`/`sqlite`
+DuckDB extensions themselves install on first use, over the network).
+
 ## Tuning (optional, separate package)
 
 `duckpipe-tuning` suggests DuckDB `threads`/`memory_limit` settings from
@@ -226,7 +267,9 @@ PR — also a live example of the GitHub Actions trigger recipe above.
 ## Status
 
 Pre-1.0, working name (see [`ROADMAP.md`](ROADMAP.md) §0/§12 for the open
-naming question). Phases 0-2.5 plus Phase 3a (task-scoped distributed
-execution) are implemented and covered by the test suite, examples, and
-docs above; see `ROADMAP.md` §11 for what's done and what's next
-(Phase 3b-e: DuckLake backend, serverless executor, beefy-node mode, WASM).
+naming question). Phases 0-2.5, Phase 3a (task-scoped distributed
+execution), and Phase 3b (DuckLake observability upgrade) are implemented
+and covered by the test suite, examples, and docs above; see
+`ROADMAP.md` §11 for what's done and what's next (Phase 3c/3d: serverless
+executor, beefy-node mode; Phase 4: WASM/browser, spike done but not yet
+a committed deliverable).

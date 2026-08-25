@@ -108,3 +108,39 @@ def test_compact_command_runs_against_a_state_uri(tmp_path):
     result = runner.invoke(app, ["compact", state_uri])
     assert result.exit_code == 0
     assert "compacted" in result.stdout
+
+
+def _ducklake_catalog(tmp_path):
+    return f"ducklake:sqlite:{tmp_path / 'pipeline.ducklake.sqlite'}"
+
+
+def test_run_and_stats_against_a_ducklake_backend(tmp_path):
+    catalog = _ducklake_catalog(tmp_path)
+    result = runner.invoke(app, ["run", str(FIXTURES / "toy_dag.py"), "--db", catalog])
+    assert result.exit_code == 0
+    assert "success" in result.stdout
+
+    stats_result = runner.invoke(app, ["stats", catalog])
+    assert stats_result.exit_code == 0
+    assert "DuckLake-backed" in stats_result.stdout
+
+    snapshots_result = runner.invoke(app, ["stats", catalog, "--snapshots"])
+    assert snapshots_result.exit_code == 0
+    assert "task load succeeded" in snapshots_result.stdout
+
+
+def test_ducklake_db_combined_with_only_reports_a_friendly_error(tmp_path):
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            str(FIXTURES / "toy_dag.py"),
+            "--db",
+            _ducklake_catalog(tmp_path),
+            "--only",
+            "extract",
+        ],
+    )
+    assert result.exit_code == 1
+    assert "Traceback" not in result.stdout
+    assert "only=" in result.stdout

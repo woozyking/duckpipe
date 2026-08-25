@@ -32,6 +32,15 @@ azure = [
 arrow = [
     "pyarrow>=18.0.0",
 ]
+ducklake = [
+    # `ducklake`/`sqlite`/`postgres` themselves are DuckDB extensions,
+    # auto-installed on first use, not Python packages -- pytz is the one
+    # real dependency, needed by the `ducklake` extension's snapshot
+    # listing (`ducklake_snapshots()`), which duckpipe.state.list_snapshots
+    # uses for the time-travel-over-run-history story (ROADMAP.md sec 8,
+    # Phase 3b).
+    "pytz>=2024.1",
+]
 
 [project.scripts]
 duckpipe = "duckpipe.cli:main"
@@ -49,6 +58,7 @@ dev = [
     "pyarrow>=18.0.0",
     "pandas>=2.2.0",
     "fsspec>=2024.10.0",
+    "pytz>=2024.1",
     "duckpipe-tuning",
 ]
 

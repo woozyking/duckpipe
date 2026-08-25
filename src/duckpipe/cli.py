@@ -12,7 +12,6 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
 
-import duckdb
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -27,6 +26,7 @@ from duckpipe.scheduler import (
     would_skip,
 )
 from duckpipe.scheduler import run as run_pipeline
+from duckpipe.state import is_ducklake
 
 app = typer.Typer(
     name="duckpipe",
@@ -53,6 +53,21 @@ _USER_FACING_ERRORS = (
     ValueError,
 )
 
+_DUCKLAKE_FILE_PREFIXES = ("ducklake:sqlite:", "ducklake:duckdb:")
+
+
+def _state_probably_exists(db_path: str | Path) -> bool:
+    """A cheap existence check that never opens (and so never creates) the
+    store, for commands like `show`/`stats` that shouldn't conjure a
+    fresh, empty state file just by asking about one that isn't there yet.
+    """
+    if is_ducklake(db_path):
+        for prefix in _DUCKLAKE_FILE_PREFIXES:
+            if db_path.startswith(prefix):
+                return Path(db_path[len(prefix) :]).exists()
+        return True  # a live catalog (e.g. Postgres) -- can't check cheaply
+    return Path(db_path).exists()
+
 
 def _friendly_errors[F: Callable[..., object]](command: F) -> F:
     @functools.wraps(command)
@@ -76,8 +91,12 @@ def _friendly_errors[F: Callable[..., object]](command: F) -> F:
 def run(
     pipeline: Annotated[Path, typer.Argument(exists=True, help="Path to a pipeline .py module")],
     db: Annotated[
-        Path | None,
-        typer.Option("--db", help="State file path (default: duckpipe.db next to the pipeline)"),
+        str | None,
+        typer.Option(
+            "--db",
+            help="State file path, or a ducklake:... catalog "
+            "(default: duckpipe.db next to the pipeline)",
+        ),
     ] = None,
     state_uri: Annotated[
         str | None,
@@ -104,6 +123,12 @@ def run(
         str | None,
         typer.Option("--run-id", help="Shared run id so --only calls for one run group together"),
     ] = None,
+    data_path: Annotated[
+        str | None,
+        typer.Option(
+            "--data-path", help="DuckLake DATA_PATH (only with --db ducklake:...; usually auto)"
+        ),
+    ] = None,
 ) -> None:
     """Run a pipeline module end-to-end, or (with --only) exactly one task."""
     summary = run_pipeline(
@@ -115,6 +140,7 @@ def run(
         lock=not no_lock,
         only=only,
         run_id=run_id,
+        data_path=data_path,
     )
     table = Table(title=f"run {summary.run_id}  ({summary.db_path})")
     table.add_column("task")
@@ -134,7 +160,7 @@ def run(
 def show(
     pipeline: Annotated[Path, typer.Argument(exists=True, help="Path to a pipeline .py module")],
     db: Annotated[
-        Path | None, typer.Option("--db", help="State file to read last-run status from")
+        str | None, typer.Option("--db", help="State file to read last-run status from")
     ] = None,
     as_json: Annotated[
         bool,
@@ -152,14 +178,16 @@ def show(
     dag = build_dag(pipeline)
     order = dag.topological_order()
     fingerprints = resolve_fingerprints(order)
-    db_path = db or _default_db_path(pipeline)
+    db_path: str | Path = db or _default_db_path(pipeline)
 
     last_status: dict[str, tuple[str, str]] = {}
     next_run: dict[str, str] = {}
-    if db_path.exists():
+    if _state_probably_exists(db_path):
         from duckpipe.state import StateStore
 
-        with StateStore(db_path) as store:
+        # read_only: `show` never needs to write, and must never block on
+        # (or be blocked by) a pipeline that's still running.
+        with StateStore(db_path, read_only=True) as store:
             for t in order:
                 row = store.last_status(t.name)
                 if row:
@@ -233,36 +261,66 @@ def compact(
 @app.command()
 @_friendly_errors
 def stats(
-    db: Annotated[Path, typer.Argument(exists=True, help="Path to a duckpipe.db state file")],
+    db: Annotated[str, typer.Argument(help="Path to a state file, or a ducklake:... catalog")],
     limit: Annotated[int, typer.Option(help="Number of recent runs to show")] = 20,
+    snapshots: Annotated[
+        bool,
+        typer.Option(
+            "--snapshots", help="Show DuckLake snapshot history (time travel) instead of stats"
+        ),
+    ] = False,
 ) -> None:
-    """Show recent pipeline runs and per-task duration stats from the state file."""
-    con = duckdb.connect(str(db), read_only=True)
+    """Show recent pipeline runs and per-task duration stats from the state
+    file. Against a DuckLake-backed store (``--db ducklake:...``), pass
+    ``--snapshots`` to see every commit instead -- the time-travel-over-
+    run-history payoff of that backend (ROADMAP.md sec 8, Phase 3b)."""
+    from duckpipe.state import StateStore
 
-    runs = con.execute(
-        "SELECT run_id, module_path, started_at, ended_at, status "
-        "FROM pipeline_runs ORDER BY started_at DESC LIMIT ?",
-        [limit],
-    ).fetchall()
-    runs_table = Table(title="recent pipeline runs")
-    for col in ("run_id", "module", "started_at", "ended_at", "status"):
-        runs_table.add_column(col)
-    for row in runs:
-        runs_table.add_row(*(str(v) for v in row))
-    console.print(runs_table)
+    # read_only: never blocks on, or is blocked by, a pipeline still
+    # running against the same state file.
+    with StateStore(db, read_only=True) as store:
+        if snapshots:
+            _print_snapshots(store)
+            return
 
-    task_stats = con.execute(
-        "SELECT task_name, runs, avg_duration_ms, max_duration_ms, skipped_count, failed_count "
-        "FROM v_task_stats ORDER BY avg_duration_ms DESC"
-    ).fetchall()
-    stats_table = Table(title="per-task stats (from v_task_stats)")
-    for col in ("task", "runs", "avg_ms", "max_ms", "skipped", "failed"):
-        stats_table.add_column(col)
-    for row in task_stats:
-        stats_table.add_row(*(f"{v:.1f}" if isinstance(v, float) else str(v) for v in row))
-    console.print(stats_table)
+        runs = store.con.execute(
+            "SELECT run_id, module_path, started_at, ended_at, status "
+            "FROM pipeline_runs ORDER BY started_at DESC LIMIT ?",
+            [limit],
+        ).fetchall()
+        runs_table = Table(title="recent pipeline runs")
+        for col in ("run_id", "module", "started_at", "ended_at", "status"):
+            runs_table.add_column(col)
+        for row in runs:
+            runs_table.add_row(*(str(v) for v in row))
+        console.print(runs_table)
 
-    con.close()
+        task_stats = store.con.execute(
+            "SELECT task_name, runs, avg_duration_ms, max_duration_ms, skipped_count, failed_count "
+            "FROM v_task_stats ORDER BY avg_duration_ms DESC"
+        ).fetchall()
+        stats_table = Table(title="per-task stats (from v_task_stats)")
+        for col in ("task", "runs", "avg_ms", "max_ms", "skipped", "failed"):
+            stats_table.add_column(col)
+        for row in task_stats:
+            stats_table.add_row(*(f"{v:.1f}" if isinstance(v, float) else str(v) for v in row))
+        console.print(stats_table)
+
+        if store.is_ducklake:
+            console.print("[dim]DuckLake-backed -- see full history with --snapshots[/dim]")
+
+
+def _print_snapshots(store) -> None:
+    columns = ("snapshot_id", "snapshot_time", "author", "commit_message")
+    table = Table(title="snapshot history (time travel)")
+    for col in columns:
+        table.add_column(col)
+    for snap in store.snapshots():
+        table.add_row(*(str(snap[col]) if snap[col] is not None else "-" for col in columns))
+    console.print(table)
+    console.print(
+        "[dim]query any table AT (VERSION => snapshot_id) to see state as of that point[/dim]"
+    )
 
 
 def main() -> None:

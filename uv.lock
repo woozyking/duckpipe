@@ -606,6 +606,9 @@ azure = [
     { name = "adlfs" },
     { name = "fsspec" },
 ]
+ducklake = [
+    { name = "pytz" },
+]
 gcs = [
     { name = "fsspec" },
     { name = "gcsfs" },
@@ -627,6 +630,7 @@ dev = [
     { name = "pyarrow" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
+    { name = "pytz" },
     { name = "ruff" },
 ]
 
@@ -640,11 +644,12 @@ requires-dist = [
     { name = "fsspec", marker = "extra == 'remote'", specifier = ">=2024.10.0" },
     { name = "gcsfs", marker = "extra == 'gcs'", specifier = ">=2024.10.0" },
     { name = "pyarrow", marker = "extra == 'arrow'", specifier = ">=18.0.0" },
+    { name = "pytz", marker = "extra == 'ducklake'", specifier = ">=2024.1" },
     { name = "rich", specifier = ">=13.9.0" },
     { name = "s3fs", marker = "extra == 's3'", specifier = ">=2024.10.0" },
     { name = "typer", specifier = ">=0.15.0" },
 ]
-provides-extras = ["remote", "s3", "gcs", "azure", "arrow"]
+provides-extras = ["remote", "s3", "gcs", "azure", "arrow", "ducklake"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -655,6 +660,7 @@ dev = [
     { name = "pyarrow", specifier = ">=18.0.0" },
     { name = "pytest", specifier = ">=8.3.0" },
     { name = "pytest-asyncio", specifier = ">=0.25.0" },
+    { name = "pytz", specifier = ">=2024.1" },
     { name = "ruff", specifier = ">=0.8.0" },
 ]
 
@@ -1635,6 +1641,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/66/c0/0c8b6ad9f17a802ee498c46e004a0eb49bc148f2fd230864601a86dcf6db/python-dateutil-2.9.0.post0.tar.gz", hash = "sha256:37dd54208da7e1cd875388217d5e00ebd4179249f90fb72437e91a35459a0ad3", size = 342432, upload-time = "2024-03-01T18:36:20.211Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ec/57/56b9bcc3c9c6a792fcbaf139543cee77261f3651ca9da0c93f5c1221264b/python_dateutil-2.9.0.post0-py2.py3-none-any.whl", hash = "sha256:a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427", size = 229892, upload-time = "2024-03-01T18:36:18.57Z" },
+]
+
+[[package]]
+name = "pytz"
+version = "2026.3.post1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/fb/48/fb042503b6ca6cd271261dc559fd6432f7d8c713153e9ec5c591af4dfc1c/pytz-2026.3.post1.tar.gz", hash = "sha256:2211d3fcf9a797d3405cac96ac7f61d80e6a644f72a3309607282fe8a2010c5d", size = 319745, upload-time = "2026-07-25T15:12:07.385Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0f/7b/39c34ca613b0b198cb866466651b26b045e2009864c5183c979a3b83f383/pytz-2026.3.post1-py2.py3-none-any.whl", hash = "sha256:dd95840dd199baea12d9cc096a1d452caa6596a1c1e4b5f3dbd1541855d5e815", size = 508283, upload-time = "2026-07-25T15:12:05.782Z" },
 ]
 
 [[package]]
