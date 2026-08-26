@@ -91,9 +91,9 @@ def rolling_revenue(daily=daily_revenue):
         .rolling_mean(window_size=3, min_samples=1)
         .over("payment_type")
         .alias("revenue_3d_avg"),
-        pl.col("payment_type").replace_strict(PAYMENT_TYPE_LABELS, default="Other").alias(
-            "payment_type_label"
-        ),
+        pl.col("payment_type")
+        .replace_strict(PAYMENT_TYPE_LABELS, default="Other")
+        .alias("payment_type_label"),
     )
 
 

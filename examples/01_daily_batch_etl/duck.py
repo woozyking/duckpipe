@@ -47,9 +47,7 @@ def extract():
 
 @task
 def clean(trips=extract):
-    return trips.filter(
-        "fare_amount > 0 AND trip_distance > 0 AND passenger_count > 0"
-    ).select(
+    return trips.filter("fare_amount > 0 AND trip_distance > 0 AND passenger_count > 0").select(
         "tpep_pickup_datetime::DATE AS trip_date, "
         "payment_type, fare_amount, tip_amount, total_amount"
     )

@@ -29,9 +29,11 @@ minus the module docstring:
 def extract():
     return duckdb.sql(f"SELECT * FROM read_parquet('{DATA}')")
 
+
 @task
 def clean(trips=extract):
     return trips.filter("fare_amount > 0 AND trip_distance > 0 AND passenger_count > 0")
+
 
 @task(cache=True)
 def load(daily=clean):

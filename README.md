@@ -1,21 +1,25 @@
 # DuckPipe
 
 A serverless-first, DuckDB-native pipeline orchestrator. No scheduler
-daemon, no metadata Postgres, no broker — a run is a Python process that
-starts, does work, records what it did to a `.duckdb` file, and exits.
+daemon, no central metadata database required, no broker — a run is a
+Python process that starts, does work, records what it did to a
+`.duckdb` file, and exits.
 
 ```python
 # pipeline.py
 import duckdb
 from duckpipe import task, run
 
+
 @task
 def extract():
     return duckdb.sql("SELECT * FROM read_parquet('trips.parquet')")
 
+
 @task(cache=True)
 def daily_totals(trips=extract):
     return trips.aggregate("date_trunc('day', ts) AS day, sum(fare) AS total").pl()
+
 
 if __name__ == "__main__":
     run(__file__)
@@ -40,7 +44,11 @@ single real pipeline — fixed infrastructure tax whether your DAG moves a
 thousand rows once a day or a billion rows every minute. Most pipeline
 DAGs are a handful of dependent steps over data that fits on one
 machine. DuckPipe is the orchestrator for *that* case: a library, not a
-platform. See [`ROADMAP.md`](ROADMAP.md) for the full design rationale,
+platform — though never at odds with a central metadata store either:
+if you already run one and want several DuckPipe deployments sharing a
+catalog, that's an opt-in upgrade away, not a different architecture
+(see [DuckLake observability upgrade](#ducklake-observability-upgrade)
+below). See [`ROADMAP.md`](ROADMAP.md) for the full design rationale,
 prior-art landscape check, and phased plan this implementation follows.
 
 ## Install
@@ -222,6 +230,23 @@ reasons why one doesn't subsume the other). See
 for time travel and schema evolution demonstrated concretely. Needs
 `uv add "duckpipe[ducklake]"` (just `pytz`; the `ducklake`/`sqlite`
 DuckDB extensions themselves install on first use, over the network).
+
+**Bonus, for teams that already run one:** the same `db_path` string can
+point at a dedicated, long-running metadata database instead of a local
+file — `db_path="ducklake:postgres:dbname=... host=..."`, with
+`data_path` passed explicitly (a shared network path or object-storage
+URI every deployment can reach). Nothing else about `duckpipe.run(...)`
+changes; it's the same opt-in, one layer further. What it buys beyond
+the SQLite catalog above: several DuckPipe deployments — different
+teams, different tenants, different machines — sharing one catalog with
+genuine concurrent-write support. Verified directly, not assumed: 8
+concurrent commits against a real Postgres catalog all succeeded with no
+retry logic at all, where the same test against a SQLite catalog failed
+3 of 8 outright (see
+[`examples/05_distributed_with_ducklake`](examples/05_distributed_with_ducklake/)
+for that comparison in full). Entirely optional — the SQLite catalog
+above needs no such infrastructure and is the right default for a
+single team's own history.
 
 ## Serverless executor and beefy-node mode
 

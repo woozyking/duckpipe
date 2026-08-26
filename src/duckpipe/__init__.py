@@ -1,8 +1,8 @@
 """DuckPipe: a serverless-first, DuckDB-native pipeline orchestrator.
 
-No scheduler daemon, no metadata Postgres, no broker -- a run is a
-process that starts, does work, records what it did to a ``.duckdb``
-file, and exits::
+No scheduler daemon, no central metadata database required, no broker
+-- a run is a process that starts, does work, records what it did to a
+``.duckdb`` file, and exits::
 
     from duckpipe import task, run
 

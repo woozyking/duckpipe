@@ -46,6 +46,7 @@ the task itself like anywhere else:
 import duckdb
 from duckpipe_tuning import suggest_duckdb_settings
 
+
 @task(cache=True)
 def transform():
     settings = suggest_duckdb_settings(workload="join")

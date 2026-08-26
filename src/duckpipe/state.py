@@ -13,9 +13,19 @@ Two backends share this exact same schema and Python API:
   evolution with no migration step, other tools querying the same
   catalog. Nothing about calling ``duckpipe.run(...)`` changes; it's the
   same ``db_path``/``--db`` you'd hand a plain file, pointed at a
-  different kind of string. ``only=``/``state_uri`` (Phase 3a's
-  distributed mechanism) are deliberately not wired to this backend --
-  see ``scheduler.run()``'s docstring for why.
+  different kind of string. The same catalog string can instead point at
+  a dedicated, long-running metadata database you already run --
+  ``db_path="ducklake:postgres:dbname=... host=..."`` -- with ``data_path``
+  passed explicitly, giving several DuckPipe deployments one shared,
+  concurrently-writable catalog (verified directly: 8/8 concurrent
+  commits succeed against a real Postgres catalog with zero retry logic,
+  vs. 3/8 failing outright against a SQLite one under the same load --
+  see ``examples/05_distributed_with_ducklake``). Nothing here requires
+  standing that up; it's there for teams that already have one and want
+  a shared, multi-user/multi-tenant catalog behind several DuckPipe
+  deployments. ``only=``/``state_uri`` (Phase 3a's distributed mechanism)
+  are deliberately not wired to this backend either way -- see
+  ``scheduler.run()``'s docstring for why.
 
 Neither ``PRIMARY KEY`` nor ``ON CONFLICT`` appears anywhere in this
 schema: DuckLake doesn't support constraints at all (verified directly
@@ -282,7 +292,10 @@ class StateStore:
             raise ValueError(
                 f"data_path is required for this DuckLake catalog ({catalog!r}) -- "
                 "duckpipe can only derive a default data directory for a local "
-                "ducklake:sqlite:/ducklake:duckdb: catalog file"
+                "ducklake:sqlite:/ducklake:duckdb: catalog file. A "
+                "Postgres/MySQL-backed catalog works the same way otherwise -- "
+                "just pass data_path explicitly (a shared network path or "
+                "object-storage URI every deployment can reach)"
             )
         if "://" not in data_path:
             Path(data_path).mkdir(parents=True, exist_ok=True)

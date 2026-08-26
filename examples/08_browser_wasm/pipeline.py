@@ -24,7 +24,14 @@ from duckpipe import task
 SOURCE = os.environ.get("DUCKPIPE_EXAMPLE_DATA", "/data/input.parquet")
 
 _NUMERIC_TYPES = (
-    "TINYINT", "SMALLINT", "INTEGER", "BIGINT", "HUGEINT", "FLOAT", "DOUBLE", "DECIMAL",
+    "TINYINT",
+    "SMALLINT",
+    "INTEGER",
+    "BIGINT",
+    "HUGEINT",
+    "FLOAT",
+    "DOUBLE",
+    "DECIMAL",
 )
 
 

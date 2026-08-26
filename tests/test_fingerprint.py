@@ -53,9 +53,7 @@ def test_extra_fingerprint_opts_in_external_state():
     def watches_external_changed():
         return 1
 
-    assert fingerprint_task(watches_external, {}) != fingerprint_task(
-        watches_external_changed, {}
-    )
+    assert fingerprint_task(watches_external, {}) != fingerprint_task(watches_external_changed, {})
 
 
 def test_resolve_fingerprints_is_stable_across_two_runs():

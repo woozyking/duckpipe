@@ -3,8 +3,17 @@ upgrade (time travel over run history, schema evolution), not a rework of
 Phase 3a's distributed mechanism (ROADMAP.md sec 8). These need network on
 a cold extension cache (`INSTALL ducklake`/`sqlite`), same as
 examples/05_distributed_with_ducklake.
+
+The Postgres-catalog test near the end covers the same backend's "bonus"
+opt-in one layer further -- a dedicated, long-running metadata database
+instead of a local file, for teams that want several DuckPipe deployments
+sharing one catalog. Needs a working `docker` daemon; skipped cleanly
+without one.
 """
 
+import subprocess
+import time
+import uuid
 from pathlib import Path
 
 import pytest
@@ -17,6 +26,13 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 def _catalog(tmp_path: Path) -> str:
     return f"ducklake:sqlite:{tmp_path / 'pipeline.ducklake.sqlite'}"
+
+
+def _docker_available() -> bool:
+    try:
+        return subprocess.run(["docker", "info"], capture_output=True, timeout=10).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
 
 
 def test_is_ducklake_detects_the_prefix():
@@ -106,3 +122,81 @@ def test_read_only_open_does_not_write_schema(tmp_path):
     with StateStore(catalog, read_only=True) as store:
         after = len(store.snapshots())
     assert before == after
+
+
+# -- Postgres-backed catalog (ROADMAP.md sec 8, Phase 3b's "bonus"): the
+# same backend, generic enough that it already worked against a live
+# Postgres with zero code changes -- these just check that for real,
+# rather than leaving it as a documentation-only claim.
+
+
+@pytest.mark.skipif(not _docker_available(), reason="needs a working docker daemon")
+def test_ducklake_backend_works_against_a_postgres_catalog(tmp_path):
+    container = f"duckpipe-test-pg-{uuid.uuid4().hex[:8]}"
+    subprocess.run(
+        [
+            "docker",
+            "run",
+            "-d",
+            "--name",
+            container,
+            "-e",
+            "POSTGRES_PASSWORD=duckpipe",
+            "-P",
+            "postgres:17-alpine",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    try:
+        port = (
+            subprocess.run(
+                ["docker", "port", container, "5432/tcp"],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            .stdout.strip()
+            .rsplit(":", 1)[-1]
+        )
+        for _ in range(30):
+            if (
+                subprocess.run(
+                    ["docker", "exec", container, "pg_isready", "-U", "postgres"],
+                    capture_output=True,
+                    timeout=5,
+                ).returncode
+                == 0
+            ):
+                break
+            time.sleep(1)
+        else:
+            pytest.fail("postgres container never became ready")
+
+        catalog = (
+            f"ducklake:postgres:dbname=postgres host=localhost port={port} "
+            "user=postgres password=duckpipe"
+        )
+        data_path = str(tmp_path / "data")
+
+        # No data_path derivable for a non-file catalog -- and the error
+        # says so in a way that points at the fix, not just the limit.
+        with pytest.raises(ValueError, match="Postgres/MySQL"):
+            run(FIXTURES / "toy_dag.py", db_path=catalog)
+
+        first = run(FIXTURES / "toy_dag.py", db_path=catalog, data_path=data_path)
+        assert first.success
+        assert first.results["load"] == [2, 4, 6, 101, 102, 103]
+
+        second = run(FIXTURES / "toy_dag.py", db_path=catalog, data_path=data_path)
+        assert all(status == "skipped" for status in second.statuses.values())
+
+        with StateStore(catalog, read_only=True) as store:
+            assert store.is_ducklake
+            assert store.last_status("extract") is not None
+            assert len(store.snapshots()) > 0
+    finally:
+        subprocess.run(["docker", "rm", "-f", container], capture_output=True, timeout=30)

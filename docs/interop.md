@@ -20,10 +20,12 @@ boundary).
 from airflow.operators.python import PythonOperator
 import duckpipe
 
+
 def run_duckpipe_pipeline(**context):
     summary = duckpipe.run("/opt/pipelines/daily_etl.py")
     if not summary.success:
         raise RuntimeError(f"duckpipe run failed: {summary.errors}")
+
 
 task = PythonOperator(
     task_id="daily_etl_duckpipe",
@@ -43,6 +45,7 @@ task-level fingerprint incrementality.
 from dagster import op
 import duckpipe
 
+
 @op
 def daily_etl_duckpipe():
     summary = duckpipe.run("/opt/pipelines/daily_etl.py")
@@ -56,6 +59,7 @@ def daily_etl_duckpipe():
 ```python
 from prefect import task
 import duckpipe
+
 
 @task
 def daily_etl_duckpipe():

@@ -40,3 +40,32 @@ commands, the same mental model, a different `--db` string. What it's
 `--state-uri` both refuse to combine with a `ducklake:` `--db`, on
 purpose (see `ROADMAP.md` sec 8 for why they're separate upgrades, not
 one subsuming the other).
+
+## Bonus: a shared Postgres catalog, for multiple teams/tenants
+
+Everything above uses `ducklake:sqlite:...`, a local file — the right
+default for one team's own run history, no infrastructure required. The
+exact same `--db`/`db_path` string can instead point at a dedicated,
+long-running metadata database you already run, for teams that want
+several DuckPipe deployments sharing one catalog:
+
+```bash
+docker run -d --name duckpipe-catalog -e POSTGRES_PASSWORD=duckpipe -p 5432:5432 postgres:17-alpine
+
+uv run duckpipe run examples/06_ducklake_observability/pipeline.py \
+    --db "ducklake:postgres:dbname=postgres host=localhost user=postgres password=duckpipe" \
+    --data-path /srv/shared/ducklake_data   # or an s3://... URI every deployment can reach
+```
+
+Nothing else changes — same commands, same schema, same `--snapshots`.
+`data_path` is the one required addition, since there's no local file to
+derive a sibling data directory from the way there is for the SQLite
+catalog above. What this buys: genuine concurrent-write support across
+several deployments, not just one team's own history. Verified directly
+against a real Postgres instance, not assumed from DuckLake's own docs:
+8 concurrent commits with *no* retry logic all succeeded, where the
+identical test against a SQLite catalog failed 3 of 8 outright — see
+[`../05_distributed_with_ducklake`](../05_distributed_with_ducklake/)
+for that comparison end to end. Entirely optional: nothing above needs
+this, it's here for teams that already have a Postgres (or MySQL) and
+want a shared catalog rather than one file per team.

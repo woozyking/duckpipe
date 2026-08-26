@@ -135,8 +135,15 @@ def test_serverless_executor_example():
     root = EXAMPLES.parent
     try:
         build = subprocess.run(
-            ["docker", "build", "-f", "examples/07_serverless_executor/Dockerfile", "-t",
-             "duckpipe-worker", "."],
+            [
+                "docker",
+                "build",
+                "-f",
+                "examples/07_serverless_executor/Dockerfile",
+                "-t",
+                "duckpipe-worker",
+                ".",
+            ],
             cwd=root,
             capture_output=True,
             text=True,

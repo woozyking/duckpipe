@@ -54,6 +54,7 @@ runs want a clean slate every time, not incrementality).
 # handler.py
 import duckpipe
 
+
 def handler(event, context):
     summary = duckpipe.run(
         "/var/task/pipeline.py",
@@ -76,6 +77,7 @@ from fastapi import FastAPI
 import duckpipe
 
 app = FastAPI()
+
 
 @app.post("/run")
 def trigger():

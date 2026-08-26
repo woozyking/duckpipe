@@ -53,9 +53,7 @@ def test_failure_cascades_to_downstream_but_not_to_siblings(tmp_path):
     import duckdb
 
     con = duckdb.connect(str(db_path), read_only=True)
-    row = con.execute(
-        "SELECT status FROM task_runs WHERE task_name = 'downstream'"
-    ).fetchone()
+    row = con.execute("SELECT status FROM task_runs WHERE task_name = 'downstream'").fetchone()
     con.close()
     assert row == ("upstream_failed",)
 
