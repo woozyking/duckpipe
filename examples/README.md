@@ -22,6 +22,7 @@ that materializes on purpose, and is explicit about exactly why.
 | [`05_distributed_with_ducklake`](05_distributed_with_ducklake/) | same coordination problem as 04 | The "obvious next increment" from 04: workers commit straight into one shared DuckLake-backed table instead of writing delta files — with the honest tradeoff (SQLite-catalog retries vs. a Postgres catalog) verified, not assumed |
 | [`06_ducklake_observability`](06_ducklake_observability/) | `extract → clean → daily_totals`, DuckLake-backed | Time travel over run history and no-migration schema evolution, from the same `--db` argument a plain file goes in |
 | [`07_serverless_executor`](07_serverless_executor/) | `extract → summarize` | Phase 3c: the same distributed run from 04, with its two tasks dispatched through two genuinely different invocation shapes — a container and a `handler(event, context)` function — proving the "not locked to one platform" claim instead of asserting it |
+| [`08_browser_wasm`](08_browser_wasm/) | `profile → numeric_summary → report` | Phase 4: the same DuckPipe source, unmodified, running a real DAG with real fingerprint-based caching entirely inside a browser tab via Pyodide — no install, no server, and (pick "your own file") no upload either |
 
 Run any of the first three (each `duck.py`/`pl.py` pair uses its own
 `--db` and output paths so the two variants never collide):
@@ -45,7 +46,9 @@ built once first (`docker build -f
 examples/07_serverless_executor/Dockerfile -t duckpipe-worker .`). 06 is
 run the same way as 01-03 above, just with `--db
 "ducklake:sqlite:...pipeline.ducklake.sqlite"` in place of a plain path
-— see its own README.
+— see its own README. 08 is a static web page, not a CLI invocation —
+`uv run python prepare_bundle.py` once, then serve the folder and open
+it in a browser; see its own README for why (and its honest limits).
 
 See `data/README.md` for how to point any of these at the full public
 dataset instead of the bundled sample, with zero code changes.

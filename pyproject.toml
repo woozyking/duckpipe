@@ -1,7 +1,7 @@
 [project]
 name = "duckpipe"
 version = "0.1.0"
-description = "A serverless-first, DuckDB-native pipeline orchestrator. No servers, no schedulers, no metadata database — just a Python file and a `.duckdb` state file."
+description = "A serverless-first, DuckDB-native pipeline orchestrator. No scheduler daemon, no metadata Postgres, no broker — a run is a Python process that starts, does work, records what it did to a `.duckdb` file, and exits."
 readme = "README.md"
 authors = [
     { name = "Runzhou Li", email = "runzhou.li@gmail.com" }
@@ -60,6 +60,7 @@ dev = [
     "fsspec>=2024.10.0",
     "pytz>=2024.1",
     "duckpipe-tuning",
+    "playwright>=1.62.0",
 ]
 
 [tool.uv.workspace]

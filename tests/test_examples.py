@@ -26,6 +26,19 @@ def _docker_available() -> bool:
         return False
 
 
+def _chromium_available() -> bool:
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        return False
+    try:
+        with sync_playwright() as p:
+            p.chromium.launch().close()
+        return True
+    except Exception:
+        return False
+
+
 @pytest.mark.parametrize("engine", ["duck", "pl"])
 def test_daily_batch_etl_example(tmp_path, engine):
     pipeline = EXAMPLES / "01_daily_batch_etl" / f"{engine}.py"
@@ -168,3 +181,62 @@ def test_ducklake_observability_example():
     finally:
         catalog.unlink(missing_ok=True)
         shutil.rmtree(data_dir, ignore_errors=True)
+
+
+@pytest.mark.skipif(not _chromium_available(), reason="needs `uv run playwright install chromium`")
+async def test_browser_wasm_example():
+    import functools
+    import http.server
+    import threading
+
+    from playwright.async_api import async_playwright
+
+    example = EXAMPLES / "08_browser_wasm"
+    subprocess.run(
+        ["uv", "run", "python", "prepare_bundle.py"], cwd=example, check=True, timeout=30
+    )
+
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(example))
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch()
+            page = await browser.new_page()
+            await page.goto(f"http://127.0.0.1:{port}/index.html")
+
+            # First run against the bundled sample: a real, cold pipeline run.
+            await page.wait_for_function(
+                "!document.getElementById('run-btn').disabled", timeout=60000
+            )
+            await page.click("#run-btn")
+            await page.wait_for_function(
+                "!document.getElementById('results').hidden", timeout=30000
+            )
+            statuses = await page.eval_on_selector("#status-table", "el => el.textContent")
+            assert statuses.count("success") == 3, statuses
+            report = await page.eval_on_selector("#report-json", "el => el.textContent")
+            assert '"rows"' in report
+
+            # Reload -- a fresh Pyodide instance -- and run again: everything
+            # should skip, proving the state file genuinely persisted across
+            # the reload via IndexedDB, not just within one page's lifetime.
+            await page.reload()
+            await page.wait_for_function(
+                "!document.getElementById('run-btn').disabled", timeout=60000
+            )
+            await page.click("#run-btn")
+            await page.wait_for_function(
+                "!document.getElementById('results').hidden", timeout=30000
+            )
+            statuses_after_reload = await page.eval_on_selector(
+                "#status-table", "el => el.textContent"
+            )
+            assert statuses_after_reload.count("skipped") == 3, statuses_after_reload
+
+            await browser.close()
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)

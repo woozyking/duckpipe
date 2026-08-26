@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DuckPipe in your browser</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --fg: #1a1a1a; --bg: #fafafa; --panel: #ffffff; --border: #ddd;
+    --accent: #2f6f4f; --mono: "SF Mono", Consolas, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --fg: #e8e8e8; --bg: #14161a; --panel: #1c1f24; --border: #333; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2rem 1.25rem 4rem; background: var(--bg); color: var(--fg);
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  main { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 1.6rem; margin: 0 0 .25rem; }
+  .tagline { color: var(--accent); font-weight: 600; margin: 0 0 1.5rem; }
+  .badge {
+    display: inline-block; font-size: .75rem; font-weight: 600; letter-spacing: .02em;
+    background: var(--accent); color: #fff; padding: .2rem .55rem; border-radius: 999px;
+    margin-bottom: 1rem;
+  }
+  p { margin: .6rem 0; }
+  section {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 1.1rem 1.25rem; margin: 1.1rem 0;
+  }
+  section h2 { font-size: 1rem; margin: 0 0 .6rem; }
+  label { display: block; margin: .35rem 0; cursor: pointer; }
+  input[type=file] { margin: .4rem 0 .2rem .35rem; }
+  button {
+    font: inherit; font-weight: 600; padding: .5rem 1rem; border-radius: 7px;
+    border: 1px solid var(--accent); background: var(--accent); color: #fff;
+    cursor: pointer;
+  }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.secondary { background: transparent; color: var(--accent); }
+  #log {
+    font-family: var(--mono); font-size: .8rem; white-space: pre-wrap;
+    max-height: 9rem; overflow-y: auto; margin: 0; color: #888;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: .85rem; margin-top: .5rem; }
+  th, td { text-align: left; padding: .3rem .5rem; border-bottom: 1px solid var(--border); }
+  .status-success { color: #2f9e44; font-weight: 600; }
+  .status-skipped { color: #d9a400; font-weight: 600; }
+  .status-failed { color: #d64545; font-weight: 600; }
+  pre.json { font-family: var(--mono); font-size: .8rem; overflow-x: auto; background: transparent; margin: .5rem 0 0; }
+  footer { font-size: .8rem; color: #888; margin-top: 2rem; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <span class="badge">DuckPipe &middot; Phase 4</span>
+  <h1>DuckPipe, running entirely in this tab</h1>
+  <p class="tagline">No install. No server. Whatever file you pick never leaves this page.</p>
+
+  <p>This loads a real DuckDB engine and DuckPipe's own, completely
+  unmodified source (<code>task.py</code>/<code>dag.py</code>/<code>fingerprint.py</code>/<code>state.py</code>/<code>scheduler.py</code>)
+  into a WebAssembly sandbox via <a href="https://pyodide.org" target="_blank" rel="noopener">Pyodide</a>,
+  then runs the exact same <code>duckpipe.run(...)</code> call the CLI
+  uses. The pipeline (<a href="pipeline.py">pipeline.py</a>, open it) profiles whatever
+  tabular file you give it and caches each task's result, fingerprinted the
+  same way as every other DuckPipe run &mdash; reload this page and run
+  again with the same file, and every task reports <code>skipped</code>.</p>
+
+  <section>
+    <h2>1 &middot; runtime</h2>
+    <pre id="log">starting…</pre>
+  </section>
+
+  <section>
+    <h2>2 &middot; data source</h2>
+    <label><input type="radio" name="src" id="src-sample" checked> Bundled NYC taxi sample</label>
+    <label><input type="radio" name="src" id="src-upload"> Your own file
+      <input type="file" id="file-input" accept=".csv,.parquet" disabled></label>
+  </section>
+
+  <section>
+    <h2>3 &middot; run</h2>
+    <button type="button" id="run-btn" disabled>run pipeline</button>
+    <button type="button" id="clear-btn" class="secondary" disabled>clear browser storage</button>
+  </section>
+
+  <section id="results" hidden>
+    <h2>results</h2>
+    <table id="status-table"><tbody></tbody></table>
+    <h2 style="margin-top:1rem">report</h2>
+    <pre class="json" id="report-json"></pre>
+    <h2 style="margin-top:1rem">run history <span style="font-weight:400;color:#888">(straight from <code>pipeline_runs</code> in the state file &mdash; no separate UI)</span></h2>
+    <table id="history-table"><thead><tr><th>run</th><th>started</th><th>status</th></tr></thead><tbody></tbody></table>
+  </section>
+
+  <footer>
+    <a href="https://pyodide.org/en/stable/usage/api/js-api.html" target="_blank" rel="noopener">Pyodide</a> +
+    <a href="https://duckdb.org" target="_blank" rel="noopener">DuckDB</a>, coordinated by WASM JSPI (stack switching) so
+    <code>asyncio.run()</code> inside the scheduler works unmodified. State
+    persists across reloads via IndexedDB. See
+    <a href="README.md">README.md</a> for how to serve this locally and
+    <a href="../../ROADMAP.md">ROADMAP.md</a> &sect;8 for the honest limitations.
+  </footer>
+</main>
+
+<script src="https://cdn.jsdelivr.net/pyodide/v314.0.6/full/pyodide.js"></script>
+<script type="module">
+const logEl = document.getElementById("log");
+function log(msg) {
+  logEl.textContent += `\n${msg}`;
+  logEl.scrollTop = logEl.scrollHeight;
+  console.log(msg);
+}
+
+function syncfs(pyodide, populate) {
+  return new Promise((resolve, reject) => {
+    pyodide.FS.syncfs(populate, (err) => (err ? reject(err) : resolve()));
+  });
+}
+
+async function writeFetched(pyodide, url, path) {
+  const buf = await (await fetch(url)).arrayBuffer();
+  pyodide.FS.writeFile(path, new Uint8Array(buf));
+}
+
+async function boot() {
+  log("loading the Pyodide runtime…");
+  const pyodide = await loadPyodide();
+
+  log("loading the real duckdb engine (not a stub)…");
+  await pyodide.loadPackage("duckdb");
+
+  log("mounting persistent browser storage (IndexedDB) at /state…");
+  pyodide.FS.mkdirTree("/state");
+  pyodide.FS.mount(pyodide.FS.filesystems.IDBFS, { autoPersist: true }, "/state");
+  await syncfs(pyodide, true);
+
+  log("loading DuckPipe's own source, unmodified…");
+  const manifest = await (await fetch("./duckpipe_src/manifest.json")).json();
+  pyodide.FS.mkdirTree("/pkg/duckpipe");
+  for (const name of manifest) {
+    await writeFetched(pyodide, `./duckpipe_src/duckpipe/${name}`, `/pkg/duckpipe/${name}`);
+  }
+  pyodide.runPython("import sys; sys.path.insert(0, '/pkg')");
+
+  await writeFetched(pyodide, "./pipeline.py", "/pipeline.py");
+
+  log("import duckpipe …");
+  pyodide.runPython("import duckpipe");
+
+  log("ready.");
+  return pyodide;
+}
+
+const pyodideReady = boot().catch((err) => {
+  log(`ERROR during startup: ${err}`);
+  throw err;
+});
+
+document.getElementById("src-upload").addEventListener("change", (e) => {
+  document.getElementById("file-input").disabled = !e.target.checked;
+});
+document.getElementById("src-sample").addEventListener("change", (e) => {
+  document.getElementById("file-input").disabled = e.target.checked;
+});
+
+async function loadDataSource(pyodide) {
+  pyodide.FS.mkdirTree("/data");
+  if (document.getElementById("src-upload").checked) {
+    const file = document.getElementById("file-input").files[0];
+    if (!file) throw new Error("pick a file first");
+    const ext = file.name.split(".").pop().toLowerCase();
+    const buf = await file.arrayBuffer();
+    pyodide.FS.writeFile(`/data/input.${ext}`, new Uint8Array(buf));
+    log(`loaded ${file.name} (${buf.byteLength} bytes) directly from your file picker -- no network request made.`);
+    return `/data/input.${ext}`;
+  }
+  await writeFetched(pyodide, "./sample_data/input.parquet", "/data/input.parquet");
+  return "/data/input.parquet";
+}
+
+function renderStatuses(statuses, errors) {
+  const tbody = document.querySelector("#status-table tbody");
+  tbody.innerHTML = "";
+  for (const [task, status] of Object.entries(statuses)) {
+    const tr = document.createElement("tr");
+    const err = errors[task] ? ` &mdash; ${errors[task]}` : "";
+    tr.innerHTML = `<td>${task}</td><td class="status-${status}">${status}</td><td>${err}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+async function renderHistory(pyodide) {
+  const json = await pyodide.runPythonAsync(`
+import duckdb, json
+con = duckdb.connect('/state/duckpipe.db', read_only=True)
+rows = con.sql(
+    "SELECT run_id, started_at, status FROM pipeline_runs ORDER BY started_at DESC LIMIT 5"
+).fetchall()
+con.close()
+json.dumps(rows, default=str)
+`);
+  const rows = JSON.parse(json);
+  const tbody = document.querySelector("#history-table tbody");
+  tbody.innerHTML = "";
+  for (const [runId, started, status] of rows) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${runId.slice(0, 8)}</td><td>${started}</td><td>${status}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+document.getElementById("run-btn").addEventListener("click", async () => {
+  const btn = document.getElementById("run-btn");
+  btn.disabled = true;
+  try {
+    const pyodide = await pyodideReady;
+    const path = await loadDataSource(pyodide);
+    pyodide.runPython(`import os; os.environ["DUCKPIPE_EXAMPLE_DATA"] = ${JSON.stringify(path)}`);
+
+    log(`running the pipeline against ${path} …`);
+    const resultJson = await pyodide.runPythonAsync(`
+import json, duckpipe
+summary = duckpipe.run('/pipeline.py', db_path='/state/duckpipe.db')
+json.dumps({
+    'success': summary.success,
+    'statuses': summary.statuses,
+    'errors': summary.errors,
+    'results': summary.results,
+})
+`);
+    await syncfs(pyodide, false);
+    log("state saved to IndexedDB -- reload this page and run again to see it skip.");
+
+    const result = JSON.parse(resultJson);
+    document.getElementById("results").hidden = false;
+    renderStatuses(result.statuses, result.errors);
+    document.getElementById("report-json").textContent = JSON.stringify(result.results.report, null, 2);
+    await renderHistory(pyodide);
+  } catch (err) {
+    log(`ERROR: ${err}`);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+document.getElementById("clear-btn").addEventListener("click", async () => {
+  const pyodide = await pyodideReady;
+  for (const f of ["duckpipe.db", "duckpipe.db.wal"]) {
+    try { pyodide.FS.unlink(`/state/${f}`); } catch {}
+  }
+  await syncfs(pyodide, false);
+  log("cleared persisted state -- next run starts fresh.");
+  document.getElementById("results").hidden = true;
+});
+
+pyodideReady.then(() => {
+  document.getElementById("run-btn").disabled = false;
+  document.getElementById("clear-btn").disabled = false;
+});
+</script>
+</body>
+</html>

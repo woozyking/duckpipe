@@ -139,12 +139,13 @@ and explains exactly why; a real multi-process distributed cluster run
 using nothing but DuckPipe's own delta-merge mechanism, plus the same
 coordination problem solved with DuckLake instead; a DuckLake
 observability example showing time travel over run history and
-schema-evolution-with-no-migration concretely; and a serverless-executor
+schema-evolution-with-no-migration concretely; a serverless-executor
 example dispatching one run across two genuinely different invocation
 shapes — a container and a `handler(event, context)` function — to make
-the "not locked to one platform" claim checkable. Every non-distributed
-example also runs unmodified against the full public dataset by setting
-one environment variable; see
+the "not locked to one platform" claim checkable; and a browser example
+running DuckPipe's own unmodified source, with real caching, entirely
+client-side. Every non-distributed example also runs unmodified against
+the full public dataset by setting one environment variable; see
 [`examples/data/README.md`](examples/data/README.md).
 
 ## Scaling to remote storage
@@ -244,6 +245,26 @@ one platform or one coordination model:
   the `duckpipe-tuning` helpers below. See
   [`docs/remote_execution.md`](docs/remote_execution.md).
 
+## Running in the browser
+
+DuckPipe's own source runs, completely unmodified, inside a browser tab
+via [Pyodide](https://pyodide.org) — a real DuckDB engine, a real DAG,
+real fingerprint-based caching, no server involved at any point.
+[`examples/08_browser_wasm`](examples/08_browser_wasm/) is a working page,
+not a claim: pick "your own file" and the bytes go straight from your
+file picker into the sandbox with zero network requests — your data
+never leaves the tab — and reload the page after a run and it skips
+every task, because state persisted across the reload via IndexedDB, not
+just within one page's JS lifetime. Both verified directly with an
+actual headless browser, not assumed. `asyncio.run()` inside the
+scheduler works unmodified because Pyodide uses WASM JSPI (stack
+switching), stable in Chrome 137+ today with no flag needed.
+
+No remote sync or DuckLake backend in-browser yet — Pyodide's DuckDB
+build has no runtime-loaded extensions, and whether `fsspec` works
+against Pyodide's virtual filesystem is the next open spike, not
+claimed here. See the example's own README for the full honest list.
+
 ## Tuning (optional, separate package)
 
 `duckpipe-tuning` suggests DuckDB `threads`/`memory_limit` settings from
@@ -294,9 +315,10 @@ PR — also a live example of the GitHub Actions trigger recipe above.
 ## Status
 
 Pre-1.0, working name (see [`ROADMAP.md`](ROADMAP.md) §0/§12 for the open
-naming question). Phases 0-2.5 and all of Phase 3 (3a task-scoped
+naming question). Phases 0-2.5, all of Phase 3 (3a task-scoped
 distributed execution, 3b DuckLake observability upgrade, 3c serverless
-executor, 3d beefy-node mode) are implemented and covered by the test
+executor, 3d beefy-node mode), and Phase 4's first real deliverable
+(local-only browser execution) are implemented and covered by the test
 suite, examples, and docs above; see `ROADMAP.md` §11 for what's done and
-what's next (Phase 4: WASM/browser, spike done but not yet a committed
-deliverable).
+what's next (remote sync in-browser via `fsspec`-in-Pyodide, the next
+Phase 4 spike, not started).
