@@ -1,5 +1,5 @@
 """Fan-out via a plain Python loop generating uniquely-identified task
-instances (ROADMAP.md sec 4's answer to large fan-out), instead of a
+instances (DESIGN.md sec 4's answer to large fan-out), instead of a
 dynamic-mapping primitive baked into the core."""
 
 from duckpipe import task

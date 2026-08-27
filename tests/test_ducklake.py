@@ -1,6 +1,6 @@
 """Phase 3b: the DuckLake-backed state store -- an opt-in observability
 upgrade (time travel over run history, schema evolution), not a rework of
-Phase 3a's distributed mechanism (ROADMAP.md sec 8). These need network on
+Phase 3a's distributed mechanism (DESIGN.md sec 8). These need network on
 a cold extension cache (`INSTALL ducklake`/`sqlite`), same as
 examples/05_distributed_with_ducklake.
 
@@ -124,7 +124,7 @@ def test_read_only_open_does_not_write_schema(tmp_path):
     assert before == after
 
 
-# -- Postgres-backed catalog (ROADMAP.md sec 8, Phase 3b's "bonus"): the
+# -- Postgres-backed catalog (DESIGN.md sec 8, Phase 3b's "bonus"): the
 # same backend, generic enough that it already worked against a live
 # Postgres with zero code changes -- these just check that for real,
 # rather than leaving it as a documentation-only claim.

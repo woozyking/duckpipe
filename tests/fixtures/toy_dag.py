@@ -1,4 +1,4 @@
-"""Phase 0 spike fixture: the toy 4-task diamond DAG referenced in ROADMAP.md
+"""Phase 0 spike fixture: the toy 4-task diamond DAG referenced in DESIGN.md
 sec 11 ("Prove the fingerprinting + skip-if-unchanged model works
 end-to-end for a toy 4-task DAG")."""
 

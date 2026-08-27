@@ -1,6 +1,6 @@
 """Dispatches `pipeline.py`'s two tasks across two genuinely different
-invocation shapes into the *same* distributed run (ROADMAP.md sec 8,
-Phase 3c) -- proving the portability claim by mixing them, not just
+invocation shapes into the *same* distributed run (DESIGN.md sec 8,
+DESIGN.md sec 8) -- proving the portability claim by mixing them, not just
 running each in isolation:
 
 - `extract` runs inside a container (`docker run duckpipe-worker ...`),
@@ -11,7 +11,7 @@ running each in isolation:
   Functions) calls one -- no subprocess at all, just a function call.
 
 Both dispatches are the exact same `duckpipe.run(module, only=task,
-state_uri=...)` underneath (Phase 3a, unchanged) -- coordinating through
+state_uri=...)` underneath (unchanged) -- coordinating through
 nothing but the shared `state_uri`, the same way `run_cluster.py` in
 `../04_distributed_cluster` coordinates several worker *processes*. Swap
 the `file://` bucket below for `s3://`/etc. and swap `docker run` for a

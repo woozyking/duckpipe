@@ -20,7 +20,7 @@ whether `daily_revenue` was skipped, so caching them too would just
 spend disk and pickle time for no real benefit.
 
 This also happens to be an entirely ordinary demonstration of the core
-being data-blind (ROADMAP.md sec 2, tenet #2): `daily_revenue` hands off
+being data-blind (DESIGN.md sec 2, tenet #2): `daily_revenue` hands off
 from DuckDB to Polars with zero glue code -- `.pl()` moves the result
 across the Arrow boundary once, and nothing about the DAG or the
 scheduler cares that two different engines were involved.
@@ -64,7 +64,7 @@ def daily_revenue():
     # until `.pl()`, which is the deliberate materialization point. A
     # plain `polars.DataFrame` pickles (and round-trips its type) as-is;
     # `cache_backend="arrow"` is available too, but a cache hit under it
-    # always hands back a plain `pyarrow.Table` (ROADMAP.md sec 6.2)
+    # always hands back a plain `pyarrow.Table` (DESIGN.md sec 6.2)
     # instead of the original DataFrame, so `rolling_revenue` below would
     # need to `pl.from_arrow(...)` it first -- not worth the extra step
     # for a table this small.

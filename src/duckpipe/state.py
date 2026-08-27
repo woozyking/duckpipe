@@ -2,12 +2,12 @@
 
 Every run, every task's status/duration/fingerprint/error is a row,
 queryable with ``SELECT * FROM task_runs`` from any DuckDB client -- no
-separate UI or metadata service required (ROADMAP.md sec 5).
+separate UI or metadata service required (DESIGN.md sec 5).
 
 Two backends share this exact same schema and Python API:
 
 - The default: a plain ``.duckdb`` file (``db_path="pipeline.duckdb"``).
-- Opt-in (ROADMAP.md sec 8, Phase 3b): a DuckLake catalog
+- Opt-in (DESIGN.md sec 8, Phase 3b): a DuckLake catalog
   (``db_path="ducklake:sqlite:pipeline.ducklake.sqlite"``), for teams that
   want real snapshot history -- time travel over every run, schema
   evolution with no migration step, other tools querying the same
@@ -130,7 +130,7 @@ FROM task_runs
 GROUP BY task_name;
 """
 
-# See ROADMAP.md open question #3: pickling is simple and fully generic but
+# See DESIGN.md open question #3: pickling is simple and fully generic but
 # can be slow/large for big tabular outputs -- warn rather than silently
 # writing a huge blob into the state file.
 LARGE_CACHE_WARN_BYTES = 50 * 1024 * 1024
@@ -174,8 +174,9 @@ def _serialize_arrow(value: Any) -> bytes:
     # a task actually opts into `cache_backend="arrow"` (duckpipe[arrow]).
     # `pa.table(value)` accepts anything implementing the Arrow PyCapsule
     # interface -- a DuckDBPyRelation, a pandas/Polars DataFrame, a
-    # pyarrow Table itself (ROADMAP.md sec 6.2, sec 13). Daft doesn't
-    # implement it yet as of this writing (Eventual-Inc/Daft#2504); call
+    # pyarrow Table itself (DESIGN.md sec 6.2, sec 13). Daft doesn't
+    # implement it yet as of this writing
+    # (https://github.com/Eventual-Inc/Daft/issues/2504); call
     # `.to_arrow()` yourself first if you need to cache a Daft result.
     import pyarrow as pa
 

@@ -3,10 +3,20 @@ name = "duckpipe"
 version = "0.1.0"
 description = "A serverless-first, DuckDB-native pipeline orchestrator. No scheduler daemon, no central metadata database required, no broker — a run is a Python process that starts, does work, records what it did to a `.duckdb` file, and exits."
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     { name = "Runzhou Li", email = "runzhou.li@gmail.com" }
 ]
 requires-python = ">=3.12"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Database",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = [
     "duckdb>=1.4.0",
     "typer>=0.15.0",
@@ -37,8 +47,7 @@ ducklake = [
     # auto-installed on first use, not Python packages -- pytz is the one
     # real dependency, needed by the `ducklake` extension's snapshot
     # listing (`ducklake_snapshots()`), which duckpipe.state.list_snapshots
-    # uses for the time-travel-over-run-history story (ROADMAP.md sec 8,
-    # Phase 3b).
+    # uses for the time-travel-over-run-history story (DESIGN.md sec 8).
     "pytz>=2024.1",
 ]
 

@@ -1,4 +1,4 @@
-"""The coordinator role ROADMAP.md sec 8 deliberately keeps outside
+"""The coordinator role DESIGN.md sec 8 deliberately keeps outside
 DuckPipe: dispatch `pipeline.py`'s tasks to several worker *processes*
 sharing state only through a `file://` "bucket" -- swap that for a real
 s3://... URI and nothing else about this script changes to run on an

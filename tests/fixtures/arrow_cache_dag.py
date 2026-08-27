@@ -1,4 +1,4 @@
-"""End-to-end fixture for the optional Arrow cache backend (ROADMAP.md
+"""End-to-end fixture for the optional Arrow cache backend (DESIGN.md
 sec 6.2): `stage` returns a Polars DataFrame and caches it via
 `cache_backend="arrow"` instead of the pickle default."""
 

@@ -1,6 +1,6 @@
 """A DAG built to be dispatched across worker *processes*, not run in one
-process, using Phase 3a's `only=`/`--only` mechanism and delta-merge state
-(ROADMAP.md sec 8) -- no DuckLake, no Quack, no new infrastructure.
+process, using the `only=`/`--only` mechanism and delta-merge state
+(DESIGN.md sec 8) -- no DuckLake, no Quack, no new infrastructure.
 
     extract -> {by_payment_type, by_hour} -> combined_report
 

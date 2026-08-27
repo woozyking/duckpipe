@@ -10,15 +10,19 @@ Python process that starts, does work, records what it did to a
 import duckdb
 from duckpipe import task, run
 
+TAXI_DATA = "https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2024-01.parquet"
+
 
 @task
 def extract():
-    return duckdb.sql("SELECT * FROM read_parquet('trips.parquet')")
+    return duckdb.sql(f"SELECT * FROM read_parquet('{TAXI_DATA}')")
 
 
 @task(cache=True)
 def daily_totals(trips=extract):
-    return trips.aggregate("date_trunc('day', ts) AS day, sum(fare) AS total").pl()
+    return trips.aggregate(
+        "date_trunc('day', tpep_pickup_datetime) AS day, sum(fare_amount) AS total"
+    ).pl()
 
 
 if __name__ == "__main__":
@@ -29,11 +33,24 @@ if __name__ == "__main__":
 uv run duckpipe run pipeline.py
 ```
 
-That's the whole surface area. `daily_totals(trips=extract)` is how you
-declare a dependency — no `depends_on=[...]` boilerplate, no separate DAG
-object, just a normal Python default argument. Run it again and
-`daily_totals` reports `skipped`: nothing about its code or `extract`'s
-changed, so there's nothing to redo.
+Copy that into an empty file and it just runs: `extract` streams NYC
+TLC's public trip data straight off the network via DuckDB's own
+`httpfs` — no download, no local file, no fixture to go find first.
+That's the whole surface area otherwise. `daily_totals(trips=extract)`
+is how you declare a dependency — no `depends_on=[...]` boilerplate, no
+separate DAG object, just a normal Python default argument. Run it
+again and `daily_totals` reports `skipped`: nothing about its code or
+`extract`'s changed, so there's nothing to redo.
+
+(That URL is NYC TLC's current official distribution endpoint,
+confirmed directly against their own [trip record data
+page](https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page) —
+not a permanent guarantee, though: TLC changed both the file format and
+the hosting once before, from CSV on S3 to Parquet on this CloudFront
+domain, back in May 2022. If this URL ever breaks, that page is where
+to find the current one; see
+[`examples/data/README.md`](examples/data/README.md) for more on
+running against remote data at scale.)
 
 ## Why
 
@@ -48,8 +65,8 @@ platform — though never at odds with a central metadata store either:
 if you already run one and want several DuckPipe deployments sharing a
 catalog, that's an opt-in upgrade away, not a different architecture
 (see [DuckLake observability upgrade](#ducklake-observability-upgrade)
-below). See [`ROADMAP.md`](ROADMAP.md) for the full design rationale,
-prior-art landscape check, and phased plan this implementation follows.
+below). See [`DESIGN.md`](DESIGN.md) for the full design rationale and
+prior-art landscape check.
 
 ## Install
 
@@ -84,7 +101,12 @@ uv add duckpipe-tuning          # optional, separate package -- see below
   side-effect tasks — use the `@task(depends_on=[...])` escape hatch.
 - **A pipeline is a Python module.** `duckpipe run pipeline.py` imports
   it once, discovers every `@task`-decorated function reachable from the
-  module namespace, and runs the resulting DAG.
+  module namespace, and runs the resulting DAG. Splitting tasks across
+  sibling files needs no DuckPipe-specific mechanism — normal Python
+  imports (including relative ones, `from .extract import extract`)
+  between files in the same package work exactly as they would anywhere
+  else; `pipeline.py` just needs to end up importing (directly or
+  transitively) every task you want included.
 - **State is a `.duckdb` file** next to the pipeline (path configurable).
   `SELECT * FROM task_runs` in any DuckDB client tells you what happened
   — no separate UI.
@@ -108,13 +130,13 @@ uv add duckpipe-tuning          # optional, separate package -- see below
 
 No work pools, no deployments-as-a-separate-entity, no task-runner menu.
 Full rationale for each of these choices — including the open questions
-still being resolved — is in [`ROADMAP.md`](ROADMAP.md) §5, §11, §12.
+still being resolved — is in [`DESIGN.md`](DESIGN.md) §5, §12.
 
 ## CLI
 
 ```bash
 duckpipe run pipeline.py [--db PATH] [--state-uri URI] [--force] [--max-workers N] [--only TASK]
-duckpipe show pipeline.py [--db PATH] [--json]      # resolved DAG, last-run status, and what the *next* run would do
+duckpipe show pipeline.py [--db PATH] [--json] [--mermaid]  # resolved DAG, last-run status, next-run preview, or a flowchart
 duckpipe stats duckpipe.db [--limit N] [--snapshots] # recent runs + per-task timing, or DuckLake time travel
 duckpipe compact state_uri                          # fold distributed workers' pending state into one file
 ```
@@ -126,7 +148,21 @@ A malformed pipeline (a dependency cycle, two tasks sharing a name) is
 reported as one short line, not a framework traceback. `duckpipe show`
 in particular doubles as a dry run: its "next run" column tells you
 which tasks would skip vs. re-run before you spend the time actually
-running it.
+running it. `duckpipe show pipeline.py --mermaid` prints a
+[Mermaid](https://mermaid.js.org) flowchart of the same DAG instead —
+colored by each task's last recorded status when state exists — paste
+it straight into a PR description, a wiki page, or anywhere else that
+renders Mermaid:
+
+```mermaid
+flowchart TD
+    t_extract["extract"]
+    t_daily_totals["daily_totals"]
+    t_extract --> t_daily_totals
+    class t_extract success
+    class t_daily_totals success
+    classDef success fill:#d4f7dc,stroke:#2f9e44,color:#1a1a1a
+```
 
 The state file's own views (`v_latest_task_status`, `v_run_summary`,
 `v_task_stats`) are plain SQL and queryable from any DuckDB client, not
@@ -151,8 +187,9 @@ schema-evolution-with-no-migration concretely; a serverless-executor
 example dispatching one run across two genuinely different invocation
 shapes — a container and a `handler(event, context)` function — to make
 the "not locked to one platform" claim checkable; and a browser example
-running DuckPipe's own unmodified source, with real caching, entirely
-client-side. Every non-distributed example also runs unmodified against
+that checks a file for sensitive-looking columns entirely client-side,
+so checking whether it's safe to share never itself requires sharing
+it. Every non-distributed example also runs unmodified against
 the full public dataset by setting one environment variable; see
 [`examples/data/README.md`](examples/data/README.md).
 
@@ -162,7 +199,7 @@ the full public dataset by setting one environment variable; see
 before and after a run (download-mutate-upload, since DuckDB's own file
 format only supports read-only remote `ATTACH`). This is what makes
 DuckPipe safe to run inside another orchestrator's ephemeral,
-container-per-invocation workers — see ROADMAP.md §2, §9.
+container-per-invocation workers — see DESIGN.md §2, §9.
 
 Two overlapping invocations against the same `state_uri` hold an
 advisory lock for the whole download-run-upload sequence (via each
@@ -224,7 +261,7 @@ duckpipe stats "ducklake:sqlite:pipeline.ducklake.sqlite" --snapshots
 This is an *observability* upgrade, not a coordination one — deliberately
 unrelated to `state_uri`/`only=` above (both raise a clear error if
 combined with a `ducklake:` `db_path` rather than doing something
-ill-defined; see `ROADMAP.md` §8 for the three independently-verified
+ill-defined; see `DESIGN.md` §8 for the three independently-verified
 reasons why one doesn't subsume the other). See
 [`examples/06_ducklake_observability`](examples/06_ducklake_observability/)
 for time travel and schema evolution demonstrated concretely. Needs
@@ -250,9 +287,9 @@ single team's own history.
 
 ## Serverless executor and beefy-node mode
 
-Both remaining Phase 3 extensions turned out to need no new mechanism —
-just checking that what Phase 3a already shipped genuinely isn't tied to
-one platform or one coordination model:
+Both turned out to need no new mechanism — just checking that the
+distributed-execution primitive above genuinely isn't tied to one
+platform or one coordination model:
 
 - **Serverless executor.** `duckpipe.run(module, only=task,
   state_uri=...)` *is* the reference executor — a plain Python call with
@@ -275,20 +312,26 @@ one platform or one coordination model:
 DuckPipe's own source runs, completely unmodified, inside a browser tab
 via [Pyodide](https://pyodide.org) — a real DuckDB engine, a real DAG,
 real fingerprint-based caching, no server involved at any point.
-[`examples/08_browser_wasm`](examples/08_browser_wasm/) is a working page,
-not a claim: pick "your own file" and the bytes go straight from your
-file picker into the sandbox with zero network requests — your data
-never leaves the tab — and reload the page after a run and it skips
-every task, because state persisted across the reload via IndexedDB, not
-just within one page's JS lifetime. Both verified directly with an
-actual headless browser, not assumed. `asyncio.run()` inside the
-scheduler works unmodified because Pyodide uses WASM JSPI (stack
-switching), stable in Chrome 137+ today with no flag needed.
+[`examples/08_browser_wasm`](examples/08_browser_wasm/) is a working
+page built around a concrete niche, not a generic demo: **"is this file
+safe to send anywhere?"** — checking an export for sensitive-looking
+columns (emails, phone numbers, SSNs, credit cards, IPs) without
+uploading it anywhere first, for anyone under an NDA, a legal hold, or a
+compliance policy where "upload it to a checker" is itself the
+violation. Pick "your own file" and the bytes go straight from your file
+picker into the sandbox with zero network requests — your data never
+leaves the tab — and reload the page after a run and it skips every
+task, because state persisted across the reload via IndexedDB, not just
+within one page's JS lifetime. Both verified directly with an actual
+headless browser, not assumed. `asyncio.run()` inside the scheduler
+works unmodified because Pyodide uses WASM JSPI (stack switching),
+stable in Chrome 137+ today with no flag needed.
 
 No remote sync or DuckLake backend in-browser yet — Pyodide's DuckDB
 build has no runtime-loaded extensions, and whether `fsspec` works
 against Pyodide's virtual filesystem is the next open spike, not
-claimed here. See the example's own README for the full honest list.
+claimed here. See the example's own README for the full honest list,
+including how conservative the sensitive-column checks are.
 
 ## Tuning (optional, separate package)
 
@@ -317,9 +360,9 @@ con.execute(f"SET memory_limit = '{settings['memory_limit']}'")
 - [`docs/interop.md`](docs/interop.md) — embedding a pipeline inside
   Airflow/Dagster/Prefect.
 - [`docs/remote_execution.md`](docs/remote_execution.md) — running a
-  pipeline unchanged on a bigger remote machine (Phase 3d).
-- [`ROADMAP.md`](ROADMAP.md) — the full design rationale, prior-art
-  landscape check, and phased plan this implementation follows.
+  pipeline unchanged on a bigger remote machine.
+- [`DESIGN.md`](DESIGN.md) — the full design rationale and prior-art
+  landscape check.
 
 ## Development
 
@@ -331,7 +374,7 @@ uv sync --group dev
 uv run pytest                                        # duckpipe
 uv run --directory packages/duckpipe-tuning pytest   # duckpipe-tuning
 uv run ruff check .
-uv run python scripts/phase0_bench_fanout.py          # Phase 0 concurrency spike
+uv run python scripts/phase0_bench_fanout.py          # DAG-level concurrency benchmark
 ```
 
 CI (`.github/workflows/ci.yml`) runs all of the above on every push and
@@ -339,11 +382,18 @@ PR — also a live example of the GitHub Actions trigger recipe above.
 
 ## Status
 
-Pre-1.0, working name (see [`ROADMAP.md`](ROADMAP.md) §0/§12 for the open
-naming question). Phases 0-2.5, all of Phase 3 (3a task-scoped
-distributed execution, 3b DuckLake observability upgrade, 3c serverless
-executor, 3d beefy-node mode), and Phase 4's first real deliverable
-(local-only browser execution) are implemented and covered by the test
-suite, examples, and docs above; see `ROADMAP.md` §11 for what's done and
-what's next (remote sync in-browser via `fsspec`-in-Pyodide, the next
-Phase 4 spike, not started).
+Pre-1.0, working name — see [`DESIGN.md`](DESIGN.md) §0 for the naming
+question. Everything documented above is implemented and covered by the
+test suite: the core scheduler/fingerprinting/CLI, optional `fsspec`
+remote state sync with an advisory lock, task-scoped distributed
+execution (`only=`/`--only`) with delta-merge state, the DuckLake
+observability upgrade (local SQLite catalog or a shared Postgres/MySQL
+one), the serverless-executor and beefy-node patterns, browser execution
+via Pyodide, and the Mermaid DAG export.
+
+**Not yet built:**
+- Remote sync (`state_uri`) and the DuckLake backend don't work inside
+  the browser example — needs `fsspec`-in-Pyodide verified first
+  (DESIGN.md §8, §12).
+- Final package name and a versioning/compatibility promise are still
+  open decisions (DESIGN.md §12).

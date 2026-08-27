@@ -1,4 +1,4 @@
-# Remote execution: bigger single node (Phase 3d)
+# Remote execution: bigger single node
 
 Sometimes a pipeline's bottleneck isn't "many tasks that could run in
 parallel" (§8's `--only` story) — it's one job too large for the laptop

@@ -1,4 +1,4 @@
-"""Content fingerprinting for tasks (ROADMAP.md tenet #6, open question #2).
+"""Content fingerprinting for tasks (DESIGN.md tenet #6, open question #2).
 
 A task's fingerprint hashes together:
 

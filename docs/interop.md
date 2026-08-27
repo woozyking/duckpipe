@@ -1,6 +1,6 @@
 # Embedding DuckPipe inside another orchestrator
 
-ROADMAP.md §9 states the design intent plainly: DuckPipe should always be
+DESIGN.md §9 states the design intent plainly: DuckPipe should always be
 embeddable as a single task/step inside Airflow, Prefect, Dagster, or
 anything else, **without any special integration code on DuckPipe's
 side.** This is a free consequence of tenets #1 (no persistent daemon)
@@ -98,7 +98,7 @@ after (requires the `duckpipe[s3]`/`[gcs]`/`[azure]` extra) — see
 CI. An advisory lock is held for the duration by default, so if your host
 orchestrator retries a still-running attempt or runs mapped partitions
 concurrently against the *same* `state_uri`, the overlapping run raises
-`StateLockedError` instead of racing (ROADMAP.md §12, open question #5).
+`StateLockedError` instead of racing (DESIGN.md §11).
 Give each partition its own `state_uri` if they should genuinely run in
 parallel.
 
@@ -111,4 +111,4 @@ fingerprints flowing through XCom. From the host's point of view,
 duration, nothing more. Nesting DuckPipe inside a heavier platform should
 be a decision driven by real governance/observability needs the outer
 platform provides, not something to do reflexively just because Airflow
-happens to already be installed (ROADMAP.md §9).
+happens to already be installed (DESIGN.md §9).

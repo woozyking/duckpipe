@@ -1,6 +1,6 @@
 """The exact shape of examples/01_daily_batch_etl/duck.py, pointed at a
-DuckLake catalog instead of a plain file -- Phase 3b's opt-in
-observability upgrade (ROADMAP.md sec 8). Nothing about the task code
+DuckLake catalog instead of a plain file -- DuckPipe's opt-in
+observability upgrade (DESIGN.md sec 8). Nothing about the task code
 changes; only `db_path` does.
 
 Run it, then run `explore_history.py` in this folder to see what that

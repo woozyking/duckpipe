@@ -1,11 +1,12 @@
-"""What a DuckLake-backed state store (ROADMAP.md sec 8, Phase 3b) would
-give you over Phase 3a's delta-merge mechanism (see
-../04_distributed_cluster): every worker commits straight into one
-shared, ACID-tracked table -- no `.pending/` directory, no absorb step,
-no `duckpipe compact`. This is a standalone demonstration of that
-coordination mechanism, not a literal `duckpipe.run()` backend -- wiring
-DuckLake into DuckPipe's own state store is real, separate engineering
-(ROADMAP.md sec 11, Phase 3b), not something this example claims to do.
+"""What a DuckLake-backed state store (DESIGN.md sec 8) buys over the
+delta-merge mechanism in ../04_distributed_cluster: every worker commits
+straight into one shared, ACID-tracked table -- no `.pending/`
+directory, no absorb step, no `duckpipe compact`. This is a standalone
+demonstration of that coordination mechanism on its own terms, predating
+(and separate from) DuckLake's actual wiring into `duckpipe.run()`'s own
+state store (`db_path="ducklake:..."`, see
+../06_ducklake_observability) -- not a literal `duckpipe.run()` backend
+itself.
 
 The honest part, verified directly before writing this example (not
 assumed): a SQLite catalog throws "database is locked" often enough under

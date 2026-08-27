@@ -36,6 +36,16 @@ DUCKPIPE_EXAMPLE_DATA="https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tr
 
 That's ~3M rows for one month instead of ~12k, with zero code changes —
 the same "local dev and production are the same code path" property
-ROADMAP.md tenet #5 describes for distributed execution applies just as
+DESIGN.md tenet #5 describes for distributed execution applies just as
 well to scaling up the data itself. Swap in any other month's URL, or a
 path to a bigger file you've downloaded yourself, the same way.
+
+**On that URL's stability, stated plainly rather than assumed:** it's
+NYC TLC's current official distribution endpoint — confirmed directly
+against their own [trip record data
+page](https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page),
+not a third-party mirror — and has been stable for years. It isn't a
+permanent guarantee, though: TLC changed both the file format and the
+hosting once before, from CSV on S3 to Parquet on this CloudFront
+domain, back in May 2022. If a URL like this ever 404s, that page is
+the place to find the current pattern.

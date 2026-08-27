@@ -1,5 +1,5 @@
 """Phase 3a: `only=`/`--only` task-scoped execution and the delta-merge
-mechanism it uses instead of the whole-run lock (ROADMAP.md sec 8).
+mechanism it uses instead of the whole-run lock (DESIGN.md sec 8).
 """
 
 from pathlib import Path

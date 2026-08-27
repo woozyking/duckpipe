@@ -2,8 +2,8 @@
 
 Runs `pipeline.py`'s four tasks across several worker *processes* that
 never share a Python process, a connection, or a lock on the whole state
-file — only Phase 3a's `only=`/`--only` mechanism and delta-merge state
-(ROADMAP.md sec 8).
+file — only the `only=`/`--only` mechanism and delta-merge state
+(DESIGN.md sec 8).
 
 ```bash
 uv run python run_cluster.py

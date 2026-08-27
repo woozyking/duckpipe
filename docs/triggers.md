@@ -1,6 +1,6 @@
 # Triggering a pipeline
 
-DuckPipe has no scheduler daemon of its own (ROADMAP.md tenet #1, §5)
+DuckPipe has no scheduler daemon of its own (DESIGN.md tenet #1, §5)
 "triggers are just running the command." Every recipe below reduces to
 one call: `duckpipe.run(...)` (Python) or `duckpipe run pipeline.py`
 (shell). Pick whichever trigger you already operate.
@@ -39,7 +39,7 @@ jobs:
 ```
 
 `--state-uri` matters here specifically because each workflow run is a
-fresh, ephemeral container (ROADMAP.md §2/§9) — without it, every run
+fresh, ephemeral container (DESIGN.md §2/§9) — without it, every run
 would start from zero fingerprints and never skip anything. See
 [`../examples/data/README.md`](../examples/data/README.md) for the same
 idea applied to data instead of state.
@@ -64,7 +64,7 @@ def handler(event, context):
 ```
 
 `state_uri` downloads the `.duckdb` state file before the run and
-uploads it after (ROADMAP.md §2 tenet #1) — this is what makes
+uploads it after (DESIGN.md §2 tenet #1) — this is what makes
 incrementality survive Lambda's container-per-invocation model, where
 `/var/task` itself is thrown away between invocations. Package this with
 `duckpipe[s3]` in your deployment artifact.

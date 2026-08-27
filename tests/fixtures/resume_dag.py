@@ -1,4 +1,4 @@
-"""Partial-DAG resume fixture (ROADMAP.md Phase 2): `boom` fails as long as
+"""Partial-DAG resume fixture (DESIGN.md Phase 2): `boom` fails as long as
 a test-controlled marker file exists, letting a test simulate "the run
 failed partway, someone fixed the bug, re-run the same command" and
 check that the already-succeeded, cache=True upstream task is reused

@@ -1,8 +1,8 @@
 # 07 — serverless executor, two platforms, one run
 
-Phase 3c's actual deliverable (ROADMAP.md sec 8): not a new mechanism —
-Phase 3a's `duckpipe.run(module, only=task, state_uri=...)` already *is*
-the whole "serverless executor," unchanged. What was missing was
+The reference serverless executor (DESIGN.md sec 8): not a new
+mechanism — `duckpipe.run(module, only=task, state_uri=...)` already
+*is* the whole "serverless executor," unchanged. What was missing was
 checking, not just claiming, that it's genuinely not tied to one
 platform's invocation model. This example dispatches `pipeline.py`'s two
 tasks into *one* distributed run, each through a different shape:
@@ -51,5 +51,5 @@ folds both workers' deltas into one file to report on.
   per tenet #1), never as part of DuckPipe's own sync layer.
 
 See [`../../docs/remote_execution.md`](../../docs/remote_execution.md)
-for Phase 3d — the other remaining Phase 3 extension, for when the
-bottleneck is one big task rather than many independent ones.
+for "beefy node" mode — the other extension of the same primitive, for
+when the bottleneck is one big task rather than many independent ones.

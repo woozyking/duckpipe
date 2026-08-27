@@ -1,5 +1,5 @@
 """The DAG this example dispatches across two genuinely different
-invocation shapes (ROADMAP.md sec 8, Phase 3c) -- a container and a
+invocation shapes (DESIGN.md sec 8) -- a container and a
 function-as-a-service handler -- to check, not just claim, that
 `duckpipe.run(module, only=task, state_uri=...)` really is a plain
 Python call with no platform-specific glue baked in.

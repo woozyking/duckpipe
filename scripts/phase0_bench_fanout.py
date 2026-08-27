@@ -1,4 +1,4 @@
-"""Phase 0 spike deliverable (ROADMAP.md sec 11):
+"""Phase 0 spike deliverable (DESIGN.md sec 11):
 
     "Confirm cursor-sharing concurrency pattern behaves as expected under
     DAG-level fan-out with DuckDB's GIL-release behavior (benchmark: does
@@ -7,7 +7,7 @@
 
 This builds a fan-out DAG of independent tasks -- some CPU-bound *inside*
 DuckDB (a heavy aggregation, which releases the GIL per the documented
-behavior in ROADMAP.md sec 7), some I/O-bound (a sleep standing in for a
+behavior in DESIGN.md sec 7), some I/O-bound (a sleep standing in for a
 network call) -- all sharing one DuckDB connection via `con.cursor()`
 (the documented-safe concurrency pattern), and compares running them
 through DuckPipe's scheduler against running the same functions serially.

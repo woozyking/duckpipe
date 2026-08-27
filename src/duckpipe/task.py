@@ -1,6 +1,6 @@
 """Task definitions and dependency inference.
 
-Dependency inference rule (see ROADMAP.md open question #1, now resolved):
+Dependency inference rule (see DESIGN.md open question #1, now resolved):
 an upstream dependency is declared by using the upstream ``Task`` object
 itself as a parameter's *default value*. Python evaluates default values
 once, at function-definition time, so ``def b(x=a): ...`` binds ``x``'s

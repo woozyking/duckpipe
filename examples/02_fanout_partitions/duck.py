@@ -10,12 +10,12 @@ question that has to be answered before the DAG can even be built, so it
 happens as a plain query at module-import time, not inside a task -- this
 is inherent to any dynamic-fan-out design (Airflow's dynamic task mapping
 and Prefect's `.map()` have the same shape), not a DuckPipe limitation.
-This is the pattern ROADMAP.md sec 4 recommends for large fan-out
+This is the pattern DESIGN.md sec 4 recommends for large fan-out
 instead of a dynamic-mapping primitive baked into the core.
 
 Every per-borough task takes its own `cursor()` off one shared DuckDB
 connection -- the documented-safe way for independent tasks to use
-DuckDB concurrently (ROADMAP.md sec 7) -- so the partitions can run in
+DuckDB concurrently (DESIGN.md sec 7) -- so the partitions can run in
 parallel without racing on a single connection object. Each task's own
 query plan stays lazy right up until `.write_parquet()` executes it.
 

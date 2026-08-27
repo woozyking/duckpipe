@@ -19,7 +19,7 @@ Run it (from the repo root):
 
 Run it again immediately and `load` reports "skipped" -- nothing about
 the source data or task code changed, so the fingerprint-based
-incrementality (ROADMAP.md tenet #6) has nothing to do.
+incrementality (DESIGN.md tenet #6) has nothing to do.
 """
 
 import os
@@ -30,7 +30,7 @@ import duckdb
 from duckpipe import task
 
 HERE = Path(__file__).parent
-# Same code path locally and at scale (ROADMAP.md tenet #5): point this at
+# Same code path locally and at scale (DESIGN.md tenet #5): point this at
 # the full public dataset (e.g. the CloudFront URL in ../data/README.md)
 # to run against 49M rows instead of the bundled ~12k-row sample -- DuckDB
 # streams a remote parquet URL directly, no download or code change needed.

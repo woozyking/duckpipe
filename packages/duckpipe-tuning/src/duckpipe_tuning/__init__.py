@@ -1,8 +1,8 @@
-"""Host-spec-based tuning suggestions for DuckDB (ROADMAP.md §6.1, §7).
+"""Host-spec-based tuning suggestions for DuckDB (DESIGN.md §6.1, §7).
 
 Every function here is a pure function of the *host* -- CPU count, total
 RAM, free disk space -- never of a DuckDB connection, a query, or your
-data. That's a deliberate, load-bearing boundary (§12, open question #4):
+data. That's a deliberate, load-bearing boundary (§12):
 the moment a helper here inspects a query or a connection, it has become
 the engine-aware core `duckpipe` itself refuses to be, just relocated.
 
@@ -22,7 +22,7 @@ __all__ = ["suggest_thread_count", "suggest_duckdb_settings", "suggest_temp_dir_
 __version__ = "0.1.0"
 
 # DuckDB's own guidance: ~1-2GB/thread for aggregation-heavy workloads,
-# ~3-4GB/thread for join-heavy ones (ROADMAP.md §7, §13).
+# ~3-4GB/thread for join-heavy ones (DESIGN.md §7, §13).
 _MEMORY_PER_THREAD_GB = {
     "aggregation": 1.5,
     "join": 3.5,

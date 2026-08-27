@@ -1,4 +1,4 @@
-"""Optional fsspec-backed remote state sync (ROADMAP.md sec 2 tenet #1, sec 9).
+"""Optional fsspec-backed remote state sync (DESIGN.md sec 2 tenet #1, sec 9).
 
 DuckDB's own database file format only supports read-only remote
 ``ATTACH``; read-write access is filesystem-local only. So instead of
@@ -13,12 +13,12 @@ upload cycle would otherwise have: an advisory lock *object*, written via
 each backend's own native conditional-write primitive (S3
 ``If-None-Match``, GCS ``if_generation_match``, Azure ETag preconditions)
 through fsspec's standard exclusive-create (``"x"``) file mode -- no
-server, no catalog database. See ROADMAP.md sec 12, open question #5 for
+server, no catalog database. See DESIGN.md sec 11 for
 why this beat both a persistent Quack server and a full DuckLake catalog
 for this specific problem.
 
 ``write_delta()``/``absorb_pending()`` extend the same idea to Phase 3a's
-task-scoped (``only=``) runs (ROADMAP.md sec 8): instead of contending
+task-scoped (``only=``) runs (DESIGN.md sec 8): instead of contending
 for the whole state file, a scoped run drops its own new rows in a
 uniquely-named file under ``<state_uri>.pending/`` -- a unique key can
 never collide with anyone else's, so this needs no lock at all -- and any
@@ -89,7 +89,7 @@ def locked(state_uri: str, *, max_lock_age: float = DEFAULT_MAX_LOCK_AGE):
             raise StateLockedError(
                 f"{state_uri} is locked by {existing.get('holder', '?')} "
                 f"({age:.0f}s ago); refusing to run concurrently against the "
-                f"same state_uri (ROADMAP.md sec 12, open question #5)"
+                f"same state_uri (DESIGN.md sec 11)"
             ) from None
         # Stale lock (holder likely crashed without releasing) -- reclaim it.
         # Not perfectly race-free against another reclaimer at this exact

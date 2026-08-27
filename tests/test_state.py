@@ -37,7 +37,7 @@ def test_arrow_cache_backend_roundtrips_a_polars_dataframe(tmp_path):
         result = store.get_cached("t", "fp1")
 
     # A cache hit under the arrow backend always hands back a plain
-    # pyarrow.Table (ROADMAP.md sec 6.2) regardless of the original type.
+    # pyarrow.Table (DESIGN.md sec 6.2) regardless of the original type.
     assert pl.from_arrow(result).equals(df)
 
 

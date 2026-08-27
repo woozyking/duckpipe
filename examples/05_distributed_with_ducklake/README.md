@@ -17,8 +17,8 @@ table. DuckLake's catalog (here, a local SQLite file — no external
 services, fully offline) gives you that ACID guarantee directly.
 
 **What this example is *not*:** a literal `duckpipe.run()` backend, even
-though one exists now (`db_path="ducklake:..."`, ROADMAP.md sec 8/11,
-Phase 3b — see [`../06_ducklake_observability`](../06_ducklake_observability/)).
+though one exists now (`db_path="ducklake:..."`, DESIGN.md sec 8 — see
+[`../06_ducklake_observability`](../06_ducklake_observability/)).
 This example predates that and demonstrates the raw coordination
 mechanism on its own terms — attaching a shared catalog directly and
 committing to it — so you can see exactly what it buys independent of

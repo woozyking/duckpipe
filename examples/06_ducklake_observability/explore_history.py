@@ -1,4 +1,4 @@
-"""What the DuckLake backend (ROADMAP.md sec 8, Phase 3b) actually buys
+"""What the DuckLake backend (DESIGN.md sec 8) actually buys
 over a plain `.duckdb` file: run `pipeline.py` at least once (twice, to
 see a "skipped" entry too) before running this.
 

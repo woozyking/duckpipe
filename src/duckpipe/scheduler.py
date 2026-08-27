@@ -1,7 +1,7 @@
 """DAG-level concurrency and the top-level ``run()`` entrypoint.
 
 Independent tasks run concurrently via a plain ``asyncio`` + thread-pool
-executor (ROADMAP.md tenet #3) -- never a second parallelism model layered
+executor (DESIGN.md tenet #3) -- never a second parallelism model layered
 on top of what a task's own engine (DuckDB/Polars/etc.) already does
 internally. Everything about a task's *internal* parallelism stays the
 user's own code.
@@ -34,7 +34,7 @@ _FAILURE_STATUSES = ("failed", "upstream_failed")
 
 class DuckLakeCombinationError(ValueError):
     """A DuckLake ``db_path`` was combined with something it deliberately
-    doesn't support (ROADMAP.md sec 8): it's a local observability
+    doesn't support (DESIGN.md sec 8): it's a local observability
     upgrade, not a rework of Phase 3a's distributed mechanism."""
 
 
@@ -130,7 +130,7 @@ async def _execute_dag(
             # Recorded even though this task never ran, so `task_runs` --
             # and therefore resume on a later invocation, which relies on
             # this task having no recorded fingerprint/cache -- reflects
-            # what actually happened (ROADMAP.md sec 11, "partial-DAG
+            # what actually happened (DESIGN.md sec 11, "partial-DAG
             # resume... using the same fingerprint mechanism").
             with store.transaction(f"task {t.name} upstream_failed"):
                 store.record_lineage(t.name, upstream_names)
@@ -175,7 +175,7 @@ async def _execute_dag(
         # One transaction for the whole outcome: on a DuckLake-backed
         # store this is also what makes `commit_message` a coherent
         # per-task note in the snapshot history, not one entry per
-        # low-level write (ROADMAP.md sec 8, Phase 3b).
+        # low-level write (DESIGN.md sec 8, Phase 3b).
         with store.transaction(f"task {t.name} succeeded"):
             store.record_lineage(t.name, upstream_names)
             store.record_task_run(run_id, t.name, "success", started, ended, fp)
@@ -191,7 +191,7 @@ async def _execute_dag(
                     # DuckDBPyRelation) rather than a plain picklable value
                     # -- cache the materialized result instead, or leave
                     # cache=False and let the lazy plan rebuild cheaply on
-                    # every run (ROADMAP.md sec 6.2/6.3).
+                    # every run (DESIGN.md sec 6.2/6.3).
                     logger.warning(
                         "task %s succeeded but its output could not be cached (%s: %s)",
                         t.name,
@@ -425,7 +425,7 @@ def run(
 
     ``source`` is a path to a pipeline module, or an already-imported
     module. ``db_path`` defaults to ``duckpipe.db`` next to the pipeline
-    file (ROADMAP.md tenet #4 -- zero-config, one file appears). Pass
+    file (DESIGN.md tenet #4 -- zero-config, one file appears). Pass
     ``state_uri`` to sync that file to/from S3/GCS/Azure/local before and
     after the run (tenet #1, sec 9); requires the ``duckpipe[remote]``
     extra.
@@ -433,11 +433,11 @@ def run(
     When ``state_uri`` is set, an advisory lock (``duckpipe.remote.locked``)
     is held for the whole download-run-upload sequence, so two overlapping
     invocations against the same ``state_uri`` raise ``StateLockedError``
-    instead of silently racing (ROADMAP.md sec 12, open question #5). Pass
+    instead of silently racing (DESIGN.md sec 11). Pass
     ``lock=False`` to opt back into the old unlocked behavior.
 
     Pass ``only=<task name>`` to run exactly that one task instead of the
-    whole DAG (ROADMAP.md sec 8, Phase 3a) -- the primitive many stateless
+    whole DAG (DESIGN.md sec 8, Phase 3a) -- the primitive many stateless
     workers use to cooperate on one DAG. A scoped run needs its upstream
     tasks to have already completed with their current code (raises
     ``UpstreamNotReadyError`` otherwise) and, for any it needs data from,
@@ -452,7 +452,7 @@ def run(
 
     Pass ``db_path="ducklake:sqlite:pipeline.ducklake.sqlite"`` (or any
     other DuckLake attach string) to opt into a DuckLake-backed state
-    store instead of a plain file (ROADMAP.md sec 8, Phase 3b) -- real
+    store instead of a plain file (DESIGN.md sec 8, Phase 3b) -- real
     snapshot history over every run, with no other code change. ``data_path``
     overrides where DuckLake stores table data; omitted, it's derived as a
     sibling ``<catalog>.data/`` directory for a local sqlite/duckdb
@@ -468,13 +468,13 @@ def run(
             raise DuckLakeCombinationError(
                 "db_path='ducklake:...' can't be combined with state_uri -- DuckLake's "
                 "own catalog handles multi-writer access differently than duckpipe's "
-                "object-storage sync/lock mechanism (ROADMAP.md sec 8)"
+                "object-storage sync/lock mechanism (DESIGN.md sec 8)"
             )
         if only:
             raise DuckLakeCombinationError(
                 "db_path='ducklake:...' can't be combined with only= -- it's a local "
                 "observability upgrade, deliberately separate from Phase 3a's "
-                "distributed mechanism (ROADMAP.md sec 8)"
+                "distributed mechanism (DESIGN.md sec 8)"
             )
         return _build_and_execute(source, resolved_db_path, force, max_workers, data_path=data_path)
 
