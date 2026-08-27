@@ -24,6 +24,7 @@ Build the image once, then run this:
     uv run python examples/07_serverless_executor/run_serverless_demo.py
 """
 
+import os
 import shutil
 import subprocess
 import uuid
@@ -38,21 +39,31 @@ STATE_URI = f"file://{BUCKET / 'duckpipe.db'}"
 
 def dispatch_via_container(task_name: str, run_id: str) -> None:
     print(f"  -> container worker for {task_name!r} (docker run)")
+    # Run as the host UID/GID, not the image's default root: the container
+    # writes deltas straight into the bind-mounted bucket, and the host
+    # process (dispatch_via_function, below) writes into that same
+    # directory next -- root-owned files there would lock it out.
+    docker_args = ["docker", "run", "--rm"]
+    if hasattr(os, "getuid"):
+        docker_args += ["--user", f"{os.getuid()}:{os.getgid()}"]
+    docker_args += [
+        "-v",
+        f"{BUCKET}:/data",
+        "duckpipe-worker",
+        # Default --db lands next to pipeline.py, i.e. inside the image's
+        # /app -- owned by root from the build, unwritable now that we run
+        # as the host user above. Point it at the bind mount instead.
+        "--db",
+        "/data/_container_scratch.duckdb",
+        "--only",
+        task_name,
+        "--state-uri",
+        "file:///data/duckpipe.db",
+        "--run-id",
+        run_id,
+    ]
     result = subprocess.run(
-        [
-            "docker",
-            "run",
-            "--rm",
-            "-v",
-            f"{BUCKET}:/data",
-            "duckpipe-worker",
-            "--only",
-            task_name,
-            "--state-uri",
-            "file:///data/duckpipe.db",
-            "--run-id",
-            run_id,
-        ],
+        docker_args,
         capture_output=True,
         text=True,
     )
