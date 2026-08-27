@@ -31,7 +31,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
-      - run: uv sync
+      - run: uv sync --extra s3   # only what --state-uri s3://... below actually needs
       - run: uv run duckpipe run pipelines/daily_etl.py --state-uri s3://my-bucket/duckpipe.db
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}

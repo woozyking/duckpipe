@@ -64,8 +64,8 @@ machine. DuckPipe is the orchestrator for *that* case: a library, not a
 platform — though never at odds with a central metadata store either:
 if you already run one and want several DuckPipe deployments sharing a
 catalog, that's an opt-in upgrade away, not a different architecture
-(see [DuckLake observability upgrade](#ducklake-observability-upgrade)
-below). See [`DESIGN.md`](DESIGN.md) for the full design rationale and
+(see [DuckLake observability upgrade](docs/ducklake.md)). See
+[`DESIGN.md`](DESIGN.md) for the full design rationale and
 prior-art landscape check.
 
 ## Install
@@ -74,12 +74,20 @@ Requires Python ≥3.12; developed against 3.14.
 
 ```bash
 uv add duckpipe                 # core: duckdb + typer + rich
-uv add "duckpipe[remote]"       # + fsspec, for state_uri sync
-uv add "duckpipe[s3]"           # + s3fs
+uv add "duckpipe[remote]"       # + fsspec, for state_uri sync to any fsspec-supported store
+uv add "duckpipe[s3]"           # + s3fs, for state_uri="s3://..."
+uv add "duckpipe[gcs]"          # + gcsfs, for state_uri="gs://..."
+uv add "duckpipe[azure]"        # + adlfs, for state_uri="az://..."
 uv add "duckpipe[arrow]"        # + pyarrow, for cache_backend="arrow"
 uv add "duckpipe[ducklake]"     # + pytz, for the DuckLake observability backend
 uv add duckpipe-tuning          # optional, separate package -- see below
 ```
+
+Only pull in what a given trigger/backend actually needs — `s3`/`gcs`/`azure`
+each already include `remote`, so e.g. a Lambda deployment package or a CI
+job that only uses `state_uri="s3://..."` needs just `duckpipe[s3]`, not
+every extra at once (see [`docs/triggers.md`](docs/triggers.md) for
+trigger-specific install recipes).
 
 ## The whole mental model
 
@@ -142,7 +150,7 @@ duckpipe compact state_uri                          # fold distributed workers' 
 ```
 
 `--db` accepts a plain path or a `ducklake:...` catalog string — see
-[DuckLake observability upgrade](#ducklake-observability-upgrade) below.
+[DuckLake observability upgrade](docs/ducklake.md).
 
 A malformed pipeline (a dependency cycle, two tasks sharing a name) is
 reported as one short line, not a framework traceback. `duckpipe show`
@@ -174,164 +182,34 @@ duckdb duckpipe.db -c "SELECT * FROM v_run_summary ORDER BY started_at DESC LIMI
 
 ## Examples
 
-Realistic pipelines over real, bundled open data (NYC TLC taxi trips)
-live in [`examples/`](examples/README.md): a daily batch ETL and a
-fan-out-over-partitions pipeline, each shipped as an apples-to-apples
-DuckDB/Polars pair (`duck.py`/`pl.py`) that stays lazy/streaming end to
-end; one dedicated example that deliberately materializes mid-pipeline
-and explains exactly why; a real multi-process distributed cluster run
-using nothing but DuckPipe's own delta-merge mechanism, plus the same
-coordination problem solved with DuckLake instead; a DuckLake
-observability example showing time travel over run history and
-schema-evolution-with-no-migration concretely; a serverless-executor
-example dispatching one run across two genuinely different invocation
-shapes — a container and a `handler(event, context)` function — to make
-the "not locked to one platform" claim checkable; and a browser example
-that checks a file for sensitive-looking columns entirely client-side,
-so checking whether it's safe to share never itself requires sharing
-it. Every non-distributed example also runs unmodified against
-the full public dataset by setting one environment variable; see
+Eight realistic pipelines over real, bundled open data (NYC TLC taxi
+trips) live in [`examples/`](examples/README.md) — one per facet of
+DuckPipe, from a plain batch ETL through distributed execution,
+DuckLake, a serverless executor, and running in the browser. Every
+non-distributed one also runs unmodified against the full public
+dataset by setting one environment variable; see
 [`examples/data/README.md`](examples/data/README.md).
 
-## Scaling to remote storage
+## Scaling out
 
-`state_uri` syncs the `.duckdb` state file to/from S3/GCS/Azure/local
-before and after a run (download-mutate-upload, since DuckDB's own file
-format only supports read-only remote `ATTACH`). This is what makes
-DuckPipe safe to run inside another orchestrator's ephemeral,
-container-per-invocation workers — see DESIGN.md §2, §9.
+Four upgrades, each opt-in and each usable on its own — full detail in
+[`docs/`](docs/):
 
-Two overlapping invocations against the same `state_uri` hold an
-advisory lock for the whole download-run-upload sequence (via each
-object store's native conditional-write primitive — no extra server or
-database needed), so a race raises `StateLockedError` instead of
-silently losing an update. Pass `lock=False`/`--no-lock` to opt out.
-
-```bash
-duckpipe run pipeline.py --state-uri s3://my-bucket/pipelines/daily/duckpipe.db
-```
-
-Embedding a pipeline inside Airflow/Dagster/Prefect, or triggering it
-from cron/CI/Lambda/a webhook, follows the exact same "just call
-`duckpipe.run(...)`" shape — see [`docs/triggers.md`](docs/triggers.md)
-and [`docs/interop.md`](docs/interop.md) for working recipes.
-
-## Distributed execution
-
-`only=<task>` (`--only` on the CLI) runs exactly one task instead of the
-whole DAG — the same command every trigger already calls, just narrower
-in scope. Against a `state_uri`, a scoped run never takes the whole-file
-lock above: it writes only its own new rows to a uniquely-keyed delta
-file instead of re-uploading the whole state file, so many workers can
-each run `--only` concurrently — on different tasks, or even the same
-task redundantly — with no contention at all.
-
-```bash
-duckpipe run pipeline.py --only extract --state-uri s3://my-bucket/pipelines/daily/duckpipe.db
-```
-
-Something else decides which worker runs which task and in what order —
-`duckpipe show --json` is the discovery primitive a coordinator needs
-(topological order + which tasks would skip). `duckpipe compact
-state_uri` folds workers' pending deltas into the canonical file — not
-needed for correctness (every invocation already absorbs what's pending
-itself), just for keeping `.pending/` from growing forever in a purely
-distributed workflow that never does a whole run. See
-[`examples/04_distributed_cluster`](examples/04_distributed_cluster/)
-for a real multi-process cluster run, and
-[`examples/05_distributed_with_ducklake`](examples/05_distributed_with_ducklake/)
-for the DuckLake-backed alternative.
-
-## DuckLake observability upgrade
-
-`db_path="ducklake:sqlite:pipeline.ducklake.sqlite"` — the same argument
-a plain file goes in, pointed at a different kind of string. Nothing
-else changes: `duckpipe run`/`show`/`stats` work exactly as before. What
-it buys is real snapshot history: every task's outcome becomes its own
-DuckLake commit, tagged with a plain-English message (`task extract
-succeeded`), so `task_runs AT (VERSION => n)` turns "what happened" into
-an actually-queryable history instead of a present-tense table — and
-`ALTER TABLE ... ADD COLUMN` needs no migration step.
-
-```bash
-duckpipe run pipeline.py --db "ducklake:sqlite:pipeline.ducklake.sqlite"
-duckpipe stats "ducklake:sqlite:pipeline.ducklake.sqlite" --snapshots
-```
-
-This is an *observability* upgrade, not a coordination one — deliberately
-unrelated to `state_uri`/`only=` above (both raise a clear error if
-combined with a `ducklake:` `db_path` rather than doing something
-ill-defined; see `DESIGN.md` §8 for the three independently-verified
-reasons why one doesn't subsume the other). See
-[`examples/06_ducklake_observability`](examples/06_ducklake_observability/)
-for time travel and schema evolution demonstrated concretely. Needs
-`uv add "duckpipe[ducklake]"` (just `pytz`; the `ducklake`/`sqlite`
-DuckDB extensions themselves install on first use, over the network).
-
-**Bonus, for teams that already run one:** the same `db_path` string can
-point at a dedicated, long-running metadata database instead of a local
-file — `db_path="ducklake:postgres:dbname=... host=..."`, with
-`data_path` passed explicitly (a shared network path or object-storage
-URI every deployment can reach). Nothing else about `duckpipe.run(...)`
-changes; it's the same opt-in, one layer further. What it buys beyond
-the SQLite catalog above: several DuckPipe deployments — different
-teams, different tenants, different machines — sharing one catalog with
-genuine concurrent-write support. Verified directly, not assumed: 8
-concurrent commits against a real Postgres catalog all succeeded with no
-retry logic at all, where the same test against a SQLite catalog failed
-3 of 8 outright (see
-[`examples/05_distributed_with_ducklake`](examples/05_distributed_with_ducklake/)
-for that comparison in full). Entirely optional — the SQLite catalog
-above needs no such infrastructure and is the right default for a
-single team's own history.
-
-## Serverless executor and beefy-node mode
-
-Both turned out to need no new mechanism — just checking that the
-distributed-execution primitive above genuinely isn't tied to one
-platform or one coordination model:
-
-- **Serverless executor.** `duckpipe.run(module, only=task,
-  state_uri=...)` *is* the reference executor — a plain Python call with
-  no platform-specific glue. [`examples/07_serverless_executor`](examples/07_serverless_executor/)
-  proves it by dispatching one DAG's two tasks into the same distributed
-  run through two genuinely different invocation shapes: a container
-  (`docker run`, argv-invoked — ECS/Cloud Run/a Kubernetes Job call the
-  same way) and a `handler(event, context)` function (the FaaS calling
-  convention Lambda/Modal/Cloud Functions actually use). Neither
-  `pipeline.py` nor DuckPipe itself knows or cares which one dispatched
-  it.
-- **Beefy-node mode.** One job too large for a laptop but not worth
-  distributing: the same code, unchanged, on a bigger remote machine —
-  `rsync` it over, `ssh` in, run the same command, optionally sized with
-  the `duckpipe-tuning` helpers below. See
-  [`docs/remote_execution.md`](docs/remote_execution.md).
-
-## Running in the browser
-
-DuckPipe's own source runs, completely unmodified, inside a browser tab
-via [Pyodide](https://pyodide.org) — a real DuckDB engine, a real DAG,
-real fingerprint-based caching, no server involved at any point.
-[`examples/08_browser_wasm`](examples/08_browser_wasm/) is a working
-page built around a concrete niche, not a generic demo: **"is this file
-safe to send anywhere?"** — checking an export for sensitive-looking
-columns (emails, phone numbers, SSNs, credit cards, IPs) without
-uploading it anywhere first, for anyone under an NDA, a legal hold, or a
-compliance policy where "upload it to a checker" is itself the
-violation. Pick "your own file" and the bytes go straight from your file
-picker into the sandbox with zero network requests — your data never
-leaves the tab — and reload the page after a run and it skips every
-task, because state persisted across the reload via IndexedDB, not just
-within one page's JS lifetime. Both verified directly with an actual
-headless browser, not assumed. `asyncio.run()` inside the scheduler
-works unmodified because Pyodide uses WASM JSPI (stack switching),
-stable in Chrome 137+ today with no flag needed.
-
-No remote sync or DuckLake backend in-browser yet — Pyodide's DuckDB
-build has no runtime-loaded extensions, and whether `fsspec` works
-against Pyodide's virtual filesystem is the next open spike, not
-claimed here. See the example's own README for the full honest list,
-including how conservative the sensitive-column checks are.
+- **[Distributed execution](docs/distributed_execution.md)** — sync
+  state to remote storage (`state_uri`), then scope a run to one task
+  (`only=`/`--only`) so many workers can safely share a DAG at once,
+  with no lock contention.
+- **[DuckLake observability](docs/ducklake.md)** — point `db_path` at a
+  DuckLake catalog instead of a plain file for real snapshot history,
+  time travel, and schema evolution with no migration step. Same
+  argument, same commands.
+- **[Serverless executor](docs/serverless_executor.md)** — the
+  distributed-execution primitive above, checked against two genuinely
+  different invocation shapes (a container, a FaaS `handler`) to prove
+  it isn't tied to one platform.
+- **[Beefy-node mode](docs/remote_execution.md)** and
+  **[running in the browser](docs/browser.md)** — the same code
+  unchanged on a bigger machine, or inside a browser tab via Pyodide.
 
 ## Tuning (optional, separate package)
 
@@ -353,16 +231,11 @@ con.execute(f"SET memory_limit = '{settings['memory_limit']}'")
 
 ## Docs
 
-- [`docs/why-duckpipe.md`](docs/why-duckpipe.md) — the pain points this
-  design responds to, mapped to the actual code that answers each one.
-- [`docs/triggers.md`](docs/triggers.md) — cron, GitHub Actions, Lambda,
-  webhook recipes.
-- [`docs/interop.md`](docs/interop.md) — embedding a pipeline inside
-  Airflow/Dagster/Prefect.
-- [`docs/remote_execution.md`](docs/remote_execution.md) — running a
-  pipeline unchanged on a bigger remote machine.
-- [`DESIGN.md`](DESIGN.md) — the full design rationale and prior-art
-  landscape check.
+[`docs/`](docs/) has the full chapter list — triggers, interop,
+distributed execution, DuckLake, the serverless executor, beefy-node
+mode, and the browser — each short and linking back to the example code
+it describes. [`DESIGN.md`](DESIGN.md) is the design rationale and
+prior-art landscape check behind all of it.
 
 ## Development
 

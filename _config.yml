@@ -1,0 +1,17 @@
+title: DuckPipe
+description: A serverless-first, DuckDB-native pipeline orchestrator.
+theme: jekyll-theme-minimal
+markdown: kramdown
+
+# README.md and docs/README.md are served as their folder's index page
+# automatically (jekyll-readme-index, on by default on GitHub Pages);
+# relative links between .md files resolve to the right page on the
+# published site the same way they already do when browsing the repo
+# itself (jekyll-relative-links, also on by default) -- nothing here
+# needs to duplicate that.
+
+exclude:
+  - uv.lock
+  - "**/__pycache__"
+  - "*.duckdb"
+  - "*.duckdb.wal"
