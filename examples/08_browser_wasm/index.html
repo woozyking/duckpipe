@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DuckPipe in your browser</title>
+<title>Is this file safe to send? — DuckPipe in your browser</title>
 <style>
   :root {
     color-scheme: light dark;
@@ -53,22 +53,44 @@
   pre.json { font-family: var(--mono); font-size: .8rem; overflow-x: auto; background: transparent; margin: .5rem 0 0; }
   footer { font-size: .8rem; color: #888; margin-top: 2rem; }
   a { color: var(--accent); }
+  .verdict {
+    font-weight: 700; padding: .7rem .9rem; border-radius: 8px; margin: 0 0 .8rem;
+  }
+  .verdict.restricted { background: #d6454522; color: #d64545; }
+  .verdict.maybe { background: #d9a40022; color: #a97600; }
+  .verdict.clear { background: #2f9e4422; color: #2f9e44; }
+  .col-list { margin: .3rem 0 .8rem; font-size: .85rem; }
+  .col-list code { background: var(--border); border-radius: 4px; padding: .05rem .3rem; }
 </style>
 </head>
 <body>
 <main>
-  <span class="badge">DuckPipe &middot; Phase 4</span>
-  <h1>DuckPipe, running entirely in this tab</h1>
-  <p class="tagline">No install. No server. Whatever file you pick never leaves this page.</p>
+  <span class="badge">DuckPipe &middot; in your browser</span>
+  <h1>Is this file safe to send anywhere?</h1>
+  <p class="tagline">Checked entirely in this tab. No install, no server, no upload &mdash;
+    not even to find out whether it's sensitive.</p>
 
-  <p>This loads a real DuckDB engine and DuckPipe's own, completely
-  unmodified source (<code>task.py</code>/<code>dag.py</code>/<code>fingerprint.py</code>/<code>state.py</code>/<code>scheduler.py</code>)
-  into a WebAssembly sandbox via <a href="https://pyodide.org" target="_blank" rel="noopener">Pyodide</a>,
-  then runs the exact same <code>duckpipe.run(...)</code> call the CLI
-  uses. The pipeline (<a href="pipeline.py">pipeline.py</a>, open it) profiles whatever
-  tabular file you give it and caches each task's result, fingerprinted the
-  same way as every other DuckPipe run &mdash; reload this page and run
-  again with the same file, and every task reports <code>skipped</code>.</p>
+  <p>Checking whether an export is safe to hand off is itself a
+  chicken-and-egg problem for anyone under an NDA, a legal hold, or a
+  compliance policy: the usual way to check is to run it through some
+  tool, and "uploaded it to a checker" can be exactly the violation
+  you were trying to avoid. This page can't have that problem &mdash;
+  it never makes a network request for your file, and you can watch
+  the runtime log below to see that for yourself.</p>
+
+  <p>What's actually running: a real DuckDB engine and DuckPipe's own,
+  completely unmodified source
+  (<code>task.py</code>/<code>dag.py</code>/<code>fingerprint.py</code>/<code>state.py</code>/<code>scheduler.py</code>)
+  loaded into a WebAssembly sandbox via
+  <a href="https://pyodide.org" target="_blank" rel="noopener">Pyodide</a>,
+  running the exact same <code>duckpipe.run(...)</code> call the CLI
+  uses. The pipeline (<a href="pipeline.py">pipeline.py</a>, open it)
+  scans whatever tabular file you give it for columns that look like
+  emails, phone numbers, SSNs, credit cards, or IP addresses &mdash;
+  pattern- and naming-heuristic checks, not a claim of exhaustive PII
+  detection &mdash; and caches each task's result, fingerprinted the same
+  way as every other DuckPipe run. Reload this page and run again with
+  the same file, and every task reports <code>skipped</code>.</p>
 
   <section>
     <h2>1 &middot; runtime</h2>
@@ -77,22 +99,32 @@
 
   <section>
     <h2>2 &middot; data source</h2>
-    <label><input type="radio" name="src" id="src-sample" checked> Bundled NYC taxi sample</label>
+    <label><input type="radio" name="src" id="src-sample" checked> Bundled sample &mdash; a
+      fabricated support-ticket export (fake names, <code>@example.com</code>
+      addresses, reserved-fictional phone/SSN ranges) with a few sensitive-looking
+      columns on purpose</label>
     <label><input type="radio" name="src" id="src-upload"> Your own file
       <input type="file" id="file-input" accept=".csv,.parquet" disabled></label>
   </section>
 
   <section>
     <h2>3 &middot; run</h2>
-    <button type="button" id="run-btn" disabled>run pipeline</button>
+    <button type="button" id="run-btn" disabled>scan for sensitive columns</button>
     <button type="button" id="clear-btn" class="secondary" disabled>clear browser storage</button>
   </section>
 
   <section id="results" hidden>
-    <h2>results</h2>
+    <h2>verdict</h2>
+    <div id="verdict-banner" class="verdict"></div>
+    <div id="confirmed-list" class="col-list"></div>
+    <div id="worth-a-look-list" class="col-list"></div>
+
+    <h2 style="margin-top:1rem">task run</h2>
     <table id="status-table"><tbody></tbody></table>
-    <h2 style="margin-top:1rem">report</h2>
+
+    <h2 style="margin-top:1rem">full detail</h2>
     <pre class="json" id="report-json"></pre>
+
     <h2 style="margin-top:1rem">run history <span style="font-weight:400;color:#888">(straight from <code>pipeline_runs</code> in the state file &mdash; no separate UI)</span></h2>
     <table id="history-table"><thead><tr><th>run</th><th>started</th><th>status</th></tr></thead><tbody></tbody></table>
   </section>
@@ -103,7 +135,7 @@
     <code>asyncio.run()</code> inside the scheduler works unmodified. State
     persists across reloads via IndexedDB. See
     <a href="README.md">README.md</a> for how to serve this locally and
-    <a href="../../ROADMAP.md">ROADMAP.md</a> &sect;8 for the honest limitations.
+    <a href="../../DESIGN.md">DESIGN.md</a> &sect;8 for the honest limitations.
   </footer>
 </main>
 
@@ -179,8 +211,24 @@ async function loadDataSource(pyodide) {
     log(`loaded ${file.name} (${buf.byteLength} bytes) directly from your file picker -- no network request made.`);
     return `/data/input.${ext}`;
   }
-  await writeFetched(pyodide, "./sample_data/input.parquet", "/data/input.parquet");
-  return "/data/input.parquet";
+  await writeFetched(pyodide, "./sample_data/input.csv", "/data/input.csv");
+  return "/data/input.csv";
+}
+
+function renderVerdict(report) {
+  const banner = document.getElementById("verdict-banner");
+  const tone = report.confirmed.length ? "restricted" : report.worth_a_look.length ? "maybe" : "clear";
+  banner.className = `verdict ${tone}`;
+  banner.textContent = report.verdict;
+
+  const confirmedEl = document.getElementById("confirmed-list");
+  confirmedEl.innerHTML = report.confirmed.length
+    ? `Pattern-confirmed: ${report.confirmed.map((c) => `<code>${c}</code>`).join(", ")}`
+    : "";
+  const worthALookEl = document.getElementById("worth-a-look-list");
+  worthALookEl.innerHTML = report.worth_a_look.length
+    ? `Name suggests sensitive, no pattern match: ${report.worth_a_look.map((c) => `<code>${c}</code>`).join(", ")}`
+    : "";
 }
 
 function renderStatuses(statuses, errors) {
@@ -239,7 +287,9 @@ json.dumps({
     const result = JSON.parse(resultJson);
     document.getElementById("results").hidden = false;
     renderStatuses(result.statuses, result.errors);
-    document.getElementById("report-json").textContent = JSON.stringify(result.results.report, null, 2);
+    renderVerdict(result.results.triage_report);
+    document.getElementById("report-json").textContent =
+      JSON.stringify(result.results.triage_report, null, 2);
     await renderHistory(pyodide);
   } catch (err) {
     log(`ERROR: ${err}`);

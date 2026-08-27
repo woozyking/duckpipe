@@ -1,4 +1,4 @@
-"""End-to-end checks for the in-repo examples (ROADMAP.md Phase 1: "build
+"""End-to-end checks for the in-repo examples (DESIGN.md Phase 1: "build
 3-5 realistic example pipelines... have someone unfamiliar with the
 project try them cold"). These run entirely against the bundled NYC TLC
 taxi sample -- no network required -- so they're as fast and hermetic as
@@ -224,8 +224,10 @@ async def test_browser_wasm_example():
             )
             statuses = await page.eval_on_selector("#status-table", "el => el.textContent")
             assert statuses.count("success") == 3, statuses
-            report = await page.eval_on_selector("#report-json", "el => el.textContent")
-            assert '"rows"' in report
+            verdict = await page.eval_on_selector("#verdict-banner", "el => el.textContent")
+            assert "restricted" in verdict, verdict
+            confirmed = await page.eval_on_selector("#confirmed-list", "el => el.textContent")
+            assert "email" in confirmed and "ssn" in confirmed, confirmed
 
             # Reload -- a fresh Pyodide instance -- and run again: everything
             # should skip, proving the state file genuinely persisted across
