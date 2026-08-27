@@ -47,7 +47,7 @@ def test_failure_cascades_to_downstream_but_not_to_siblings(tmp_path):
     assert summary.results["sibling"] == 10
 
     # A cascade-skipped task still gets a task_runs row -- it never ran,
-    # but that's itself an observable fact (ROADMAP.md Phase 2: partial-DAG
+    # but that's itself an observable fact (DESIGN.md Phase 2: partial-DAG
     # resume relies on `task_runs`/fingerprints accurately reflecting what
     # happened, not silently omitting cascade failures).
     import duckdb
@@ -112,7 +112,7 @@ def test_arrow_cache_backend_skips_on_second_run(tmp_path):
     second = run(FIXTURES / "arrow_cache_dag.py", db_path=db_path)
     assert second.statuses["stage"] == "skipped"
     # A cache hit under the arrow backend hands back a plain pyarrow.Table
-    # (ROADMAP.md sec 6.2) -- not the original Polars DataFrame type.
+    # (DESIGN.md sec 6.2) -- not the original Polars DataFrame type.
     assert isinstance(second.results["stage"], pa.Table)
     assert second.results["stage"].to_pydict() == {"a": [1, 2, 3]}
 
@@ -140,3 +140,9 @@ def test_state_file_is_queryable_directly_as_duckdb(tmp_path):
         ("transform_a", "success"),
         ("transform_b", "success"),
     ]
+
+
+def test_run_against_a_pipeline_with_tasks_split_across_sibling_files(tmp_path):
+    summary = run(FIXTURES / "multi_module_pkg" / "pipeline.py", db_path=tmp_path / "state.duckdb")
+    assert summary.success
+    assert summary.results == {"extract": [1, 2, 3], "transform": [10, 20, 30]}

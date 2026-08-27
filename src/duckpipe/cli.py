@@ -2,12 +2,13 @@
 
 Every subcommand is a thin wrapper over the same public functions
 (``duckpipe.run``, ``duckpipe.build_dag``) any other trigger -- cron, CI,
-a Lambda handler -- would call directly (ROADMAP.md sec 5, sec 9).
+a Lambda handler -- would call directly (DESIGN.md sec 5, sec 9).
 """
 
 from __future__ import annotations
 
 import functools
+import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
@@ -67,6 +68,53 @@ def _state_probably_exists(db_path: str | Path) -> bool:
                 return Path(db_path[len(prefix) :]).exists()
         return True  # a live catalog (e.g. Postgres) -- can't check cheaply
     return Path(db_path).exists()
+
+
+_MERMAID_STATUS_CLASS = {
+    "success": "success",
+    "skipped": "skipped",
+    "failed": "failed",
+    "upstream_failed": "failed",
+}
+_MERMAID_CLASS_DEFS = {
+    "success": "classDef success fill:#d4f7dc,stroke:#2f9e44,color:#1a1a1a",
+    "skipped": "classDef skipped fill:#fff3cd,stroke:#d9a400,color:#1a1a1a",
+    "failed": "classDef failed fill:#f8d7da,stroke:#d64545,color:#1a1a1a",
+}
+
+
+def _mermaid_node_id(name: str) -> str:
+    # Task names are usually valid identifiers already (a function's own
+    # __name__, or an explicit name=...), but a Mermaid node id has its
+    # own, stricter rules -- sanitize rather than assume, so an unusual
+    # name= never produces a broken diagram.
+    return "t_" + re.sub(r"[^A-Za-z0-9_]", "_", name)
+
+
+def _mermaid_diagram(order: list, last_status: dict[str, tuple[str, str]]) -> str:
+    """A `flowchart TD` a task's real dependency edges, one node per task
+    (labeled with its real name, not the sanitized id), colored by last
+    recorded status when state exists -- pastes straight into any
+    Markdown that renders Mermaid (GitHub, GitLab, many others)."""
+    lines = ["flowchart TD"]
+    for t in order:
+        label = t.name.replace('"', "&quot;")
+        lines.append(f'    {_mermaid_node_id(t.name)}["{label}"]')
+    for t in order:
+        for up in t.upstream_tasks():
+            lines.append(f"    {_mermaid_node_id(up.name)} --> {_mermaid_node_id(t.name)}")
+
+    used_classes: list[str] = []
+    for t in order:
+        status = last_status.get(t.name, (None, None))[0]
+        cls = _MERMAID_STATUS_CLASS.get(status)
+        if cls:
+            lines.append(f"    class {_mermaid_node_id(t.name)} {cls}")
+            if cls not in used_classes:
+                used_classes.append(cls)
+    for cls in used_classes:
+        lines.append(f"    {_MERMAID_CLASS_DEFS[cls]}")
+    return "\n".join(lines)
 
 
 def _friendly_errors[F: Callable[..., object]](command: F) -> F:
@@ -168,13 +216,23 @@ def show(
             "--json", help="Machine-readable output -- topological order + next-run preview"
         ),
     ] = False,
+    mermaid: Annotated[
+        bool,
+        typer.Option(
+            "--mermaid", help="Print a Mermaid flowchart of the DAG, colored by last status"
+        ),
+    ] = False,
 ) -> None:
     """Print the resolved DAG, each task's last-run status, and what would
     happen if you ran it again right now -- a dry-run preview of the same
     fingerprint check `run` itself uses, so you can see what's stale
     before spending the time to re-run it. `--json` is the discovery
     primitive a coordinator dispatching `--only <task>` calls needs
-    (ROADMAP.md sec 8): topological order plus which tasks would skip."""
+    (DESIGN.md sec 8): topological order plus which tasks would skip.
+    `--mermaid` prints a flowchart instead -- paste it into any Markdown
+    that renders Mermaid."""
+    if as_json and mermaid:
+        raise ValueError("--json and --mermaid are two different output modes -- pick one")
     dag = build_dag(pipeline)
     order = dag.topological_order()
     fingerprints = resolve_fingerprints(order)
@@ -200,6 +258,10 @@ def show(
                     next_run[t.name] = "run (changed)"
     else:
         next_run = {t.name: "run (no prior state)" for t in order}
+
+    if mermaid:
+        print(_mermaid_diagram(order, last_status))
+        return
 
     if as_json:
         import json
@@ -273,7 +335,7 @@ def stats(
     """Show recent pipeline runs and per-task duration stats from the state
     file. Against a DuckLake-backed store (``--db ducklake:...``), pass
     ``--snapshots`` to see every commit instead -- the time-travel-over-
-    run-history payoff of that backend (ROADMAP.md sec 8, Phase 3b)."""
+    run-history payoff of that backend (DESIGN.md sec 8, Phase 3b)."""
     from duckpipe.state import StateStore
 
     # read_only: never blocks on, or is blocked by, a pipeline still

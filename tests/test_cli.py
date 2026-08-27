@@ -67,6 +67,25 @@ def test_show_json_lists_topological_order_for_a_coordinator(tmp_path):
     assert names.index("transform_a") < names.index("load")
 
 
+def test_show_mermaid_renders_edges_and_colors_by_last_status(tmp_path):
+    db_path = tmp_path / "state.duckdb"
+    runner.invoke(app, ["run", str(FIXTURES / "toy_dag.py"), "--db", str(db_path)])
+
+    result = runner.invoke(
+        app, ["show", str(FIXTURES / "toy_dag.py"), "--db", str(db_path), "--mermaid"]
+    )
+    assert result.exit_code == 0
+    assert "flowchart TD" in result.stdout
+    assert "t_extract --> t_transform_a" in result.stdout
+    assert "class t_extract success" in result.stdout
+
+
+def test_show_mermaid_and_json_together_is_a_clear_error():
+    result = runner.invoke(app, ["show", str(FIXTURES / "toy_dag.py"), "--json", "--mermaid"])
+    assert result.exit_code == 1
+    assert "pick one" in result.stdout
+
+
 def test_run_only_executes_a_single_task(tmp_path):
     db_path = tmp_path / "state.duckdb"
     result = runner.invoke(

@@ -1,6 +1,6 @@
 """Build a DAG from a pipeline module.
 
-A pipeline is just a Python module (ROADMAP.md sec 5); DuckPipe discovers
+A pipeline is just a Python module (DESIGN.md sec 5); DuckPipe discovers
 its tasks by importing it once and scanning the module namespace for
 ``Task`` instances -- module-level attributes directly, and one level into
 list/tuple/set/dict values, which is where the "plain Python loop
@@ -87,8 +87,48 @@ def _discover_tasks(module: ModuleType) -> dict[str, Task]:
     return found
 
 
+def _package_context(path: Path) -> tuple[Path, str] | None:
+    """If ``path`` sits inside a real Python package (an ``__init__.py``
+    beside it, and so on up the tree), return ``(root_parent, dotted_name)``
+    so it can be imported through the normal import system -- the only way
+    a relative import between sibling task files (``from .extract import
+    extract``) resolves correctly. Returns ``None`` for a standalone
+    script (no ``__init__.py`` beside it) -- the common case, and the one
+    ``load_module`` leaves entirely unchanged.
+    """
+    if not (path.parent / "__init__.py").exists():
+        return None
+    parts = [] if path.name == "__init__.py" else [path.stem]
+    current = path.parent
+    while (current / "__init__.py").exists():
+        parts.append(current.name)
+        current = current.parent
+    parts.reverse()
+    return current, ".".join(parts)
+
+
 def load_module(path: str | Path) -> ModuleType:
+    """Import a pipeline file. A plain standalone script (no adjacent
+    ``__init__.py``) always loads fresh, under a unique synthetic name --
+    calling this twice on the same edited-in-place file never serves a
+    stale cached version. A file that's a real package member instead
+    goes through ``importlib.import_module`` so relative imports between
+    sibling task-definition files resolve exactly like any other Python
+    package -- ordinary ``sys.modules`` caching then applies too, the
+    same as importing that package any other way. Splitting a pipeline's
+    tasks across multiple files needs no DuckPipe-specific mechanism
+    either way (DESIGN.md tenet #3): it's just Python composition, with
+    one entrypoint module DuckPipe is pointed at.
+    """
     path = Path(path).resolve()
+    package = _package_context(path)
+    if package is not None:
+        root_parent, dotted_name = package
+        root_parent_str = str(root_parent)
+        if root_parent_str not in sys.path:
+            sys.path.insert(0, root_parent_str)
+        return importlib.import_module(dotted_name)
+
     module_name = f"duckpipe_pipeline_{path.stem}_{abs(hash(str(path)))}"
     spec = importlib.util.spec_from_file_location(module_name, path)
     if spec is None or spec.loader is None:

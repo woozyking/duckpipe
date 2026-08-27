@@ -42,3 +42,13 @@ def test_fanout_loop_produces_uniquely_named_tasks_discovered_from_a_list():
     for i in range(3):
         assert order.index("source") < order.index(f"partition_{i}")
         assert order.index(f"partition_{i}") < order.index("combine")
+
+
+def test_tasks_split_across_sibling_files_with_relative_imports():
+    """A pipeline's tasks don't need to live in one file -- normal Python
+    package composition (a relative import between task-definition files)
+    just works, no DuckPipe-specific mechanism required (tenet #3)."""
+    dag = build_dag(FIXTURES / "multi_module_pkg" / "pipeline.py")
+    assert set(dag.tasks) == {"extract", "transform"}
+    order = [t.name for t in dag.topological_order()]
+    assert order == ["extract", "transform"]
