@@ -1,0 +1,36 @@
+# DuckPipe
+
+> A serverless-first, DuckDB-native pipeline orchestrator. No scheduler
+> daemon, no central metadata database required, no broker — a run is
+> a Python process that starts, does work, records what it did to a
+> `.duckdb` file, and exits.
+
+A Python library, not a platform: `@task`-decorate a plain function,
+infer dependencies from default-argument values (`def b(x=a)` means `b`
+depends on `a`), and call `duckpipe.run(module)`. State is a `.duckdb`
+file next to the pipeline, queryable with plain SQL — no separate UI.
+A live, runnable playground with no install is linked below.
+
+## Docs
+
+- [README.md](https://woozyking.github.io/duckpipe/README.md): quickstart, install, CLI, the full mental model
+- [DESIGN.md](https://woozyking.github.io/duckpipe/DESIGN.md): design rationale and prior-art landscape check
+- [CHANGELOG.md](https://woozyking.github.io/duckpipe/CHANGELOG.md): what shipped in each release
+- [docs/why-duckpipe.md](https://woozyking.github.io/duckpipe/docs/why-duckpipe.md): the pain points this design responds to
+- [docs/triggers.md](https://woozyking.github.io/duckpipe/docs/triggers.md): cron, GitHub Actions, Lambda, webhook recipes
+- [docs/interop.md](https://woozyking.github.io/duckpipe/docs/interop.md): embedding a pipeline inside Airflow/Dagster/Prefect
+- [docs/distributed_execution.md](https://woozyking.github.io/duckpipe/docs/distributed_execution.md): syncing state to remote storage, scoping a run to one task
+- [docs/ducklake.md](https://woozyking.github.io/duckpipe/docs/ducklake.md): the opt-in DuckLake observability upgrade (time travel, schema evolution)
+- [docs/serverless_executor.md](https://woozyking.github.io/duckpipe/docs/serverless_executor.md): the same distributed-execution primitive, checked across two invocation shapes
+- [docs/remote_execution.md](https://woozyking.github.io/duckpipe/docs/remote_execution.md): running unchanged on a bigger remote machine
+- [docs/browser.md](https://woozyking.github.io/duckpipe/docs/browser.md): DuckPipe's own source, unmodified, inside a browser tab via Pyodide
+
+## Examples
+
+- [examples/README.md](https://woozyking.github.io/duckpipe/examples/README.md): index of all eight example pipelines, each one facet of DuckPipe
+- [examples/08_browser_wasm/](https://woozyking.github.io/duckpipe/examples/08_browser_wasm/): try DuckPipe live in a browser tab, no install — checks a file for sensitive-looking columns without ever uploading it
+
+## Optional
+
+- [packages/duckpipe-tuning/README.md](https://woozyking.github.io/duckpipe/packages/duckpipe-tuning/README.md): separate, optional package suggesting DuckDB thread/memory settings from host specs
+- [AGENTS.md](https://github.com/woozyking/duckpipe/blob/main/AGENTS.md): setup/test/lint commands and conventions, for an agent proposing a code change

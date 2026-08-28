@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DuckPipe — a serverless-first, DuckDB-native pipeline orchestrator</title>
+<meta name="description" content="A serverless-first, DuckDB-native pipeline orchestrator. No scheduler daemon, no central metadata database, no broker — a run is a Python process that starts, does work, and exits.">
+<style>
+  :root {
+    color-scheme: light dark;
+    --fg: #1a1a1a; --bg: #fafafa; --panel: #ffffff; --border: #ddd;
+    --accent: #2f6f4f; --mono: "SF Mono", Consolas, Menlo, monospace;
+    --muted: #666;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --fg: #e8e8e8; --bg: #14161a; --panel: #1c1f24; --border: #333; --muted: #999; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 3rem 1.25rem 4rem; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  main { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 2.1rem; margin: 0 0 .3rem; }
+  .tagline { color: var(--muted); font-size: 1.1rem; margin: 0 0 1.75rem; }
+  .badges { margin: 0 0 1.5rem; display: flex; gap: .4rem; flex-wrap: wrap; }
+  .badges img { display: block; height: 20px; }
+  .cta-row { display: flex; gap: .75rem; flex-wrap: wrap; margin: 0 0 2rem; }
+  .btn {
+    font: inherit; font-weight: 600; padding: .7rem 1.2rem; border-radius: 8px;
+    border: 1px solid var(--accent); text-decoration: none; display: inline-block;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-secondary { background: transparent; color: var(--accent); }
+  section { margin: 2.25rem 0; }
+  h2 { font-size: 1.15rem; margin: 0 0 .75rem; }
+  p { margin: .6rem 0; }
+  pre {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-family: var(--mono); font-size: .85rem;
+    line-height: 1.5;
+  }
+  code { font-family: var(--mono); font-size: .9em; }
+  .cards {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: .9rem;
+  }
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 1rem 1.1rem;
+  }
+  .card h3 { margin: 0 0 .4rem; font-size: 1rem; }
+  .card p { margin: 0 0 .5rem; color: var(--muted); font-size: .9rem; }
+  .card a { color: var(--accent); font-size: .9rem; font-weight: 600; text-decoration: none; }
+  .card a:hover { text-decoration: underline; }
+  ul.plain { margin: .4rem 0; padding-left: 1.2rem; font-size: .95rem; }
+  footer {
+    margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--border);
+    font-size: .85rem; color: var(--muted);
+  }
+  footer a { color: var(--accent); }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>DuckPipe</h1>
+  <p class="tagline">A serverless-first, DuckDB-native pipeline orchestrator.
+    No scheduler daemon, no central metadata database, no broker — a run
+    is a Python process that starts, does work, records what it did to a
+    <code>.duckdb</code> file, and exits.</p>
+
+  <div class="badges">
+    <a href="https://github.com/woozyking/duckpipe/actions/workflows/ci.yml"><img src="https://github.com/woozyking/duckpipe/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+    <a href="https://pypi.org/project/duckpipe/"><img src="https://img.shields.io/pypi/v/duckpipe.svg" alt="PyPI version"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-informational" alt="MIT license"></a>
+  </div>
+
+  <div class="cta-row">
+    <a class="btn btn-primary" href="examples/08_browser_wasm/">Try it live in your browser →</a>
+    <a class="btn btn-secondary" href="https://github.com/woozyking/duckpipe">View on GitHub</a>
+  </div>
+
+  <section>
+    <p>The link above runs a real DuckDB engine and DuckPipe's own,
+    completely unmodified source — no server, no install — checking a
+    file for sensitive-looking columns without ever uploading it. It's
+    also the fastest way to see what a run actually looks like: the same
+    task-status table and DAG view <code>duckpipe show</code> prints in
+    a terminal, rendered live after a real in-browser run.</p>
+  </section>
+
+  <section>
+    <h2>Or run it locally in 10 seconds</h2>
+    <pre><code># pipeline.py
+import duckdb
+from duckpipe import task, run
+
+TAXI_DATA = "https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2024-01.parquet"
+
+@task
+def extract():
+    return duckdb.sql(f"SELECT * FROM read_parquet('{TAXI_DATA}')")
+
+@task(cache=True)
+def daily_totals(trips=extract):
+    return trips.aggregate(
+        "date_trunc('day', tpep_pickup_datetime) AS day, sum(fare_amount) AS total"
+    ).pl()
+
+if __name__ == "__main__":
+    run(__file__)</code></pre>
+    <pre><code>uv add duckpipe
+uv run duckpipe run pipeline.py</code></pre>
+    <p>That's the whole surface area otherwise — no fixture to find, no
+    scheduler to stand up. Full quickstart and mental model in the
+    <a href="https://github.com/woozyking/duckpipe#readme">README</a>.</p>
+  </section>
+
+  <section>
+    <h2>Explore</h2>
+    <div class="cards">
+      <div class="card">
+        <h3>Why DuckPipe</h3>
+        <p>The pain points this design responds to, mapped to the code that answers each one.</p>
+        <a href="docs/why-duckpipe.html">Read →</a>
+      </div>
+      <div class="card">
+        <h3>Examples</h3>
+        <p>Eight realistic pipelines over real, bundled open data — one per facet of DuckPipe.</p>
+        <a href="examples/">Browse →</a>
+      </div>
+      <div class="card">
+        <h3>Scaling out</h3>
+        <p>Distributed execution, DuckLake observability, a serverless executor, and the browser — each opt-in.</p>
+        <a href="docs/">Read →</a>
+      </div>
+      <div class="card">
+        <h3>Design rationale</h3>
+        <p>The full design rationale and prior-art landscape check behind every tenet.</p>
+        <a href="DESIGN.html">Read →</a>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Docs</h2>
+    <ul class="plain">
+      <li><a href="docs/triggers.html">Triggers</a> — cron, GitHub Actions, Lambda, webhook recipes</li>
+      <li><a href="docs/interop.html">Interop</a> — embedding a pipeline inside Airflow/Dagster/Prefect</li>
+      <li><a href="docs/distributed_execution.html">Distributed execution</a></li>
+      <li><a href="docs/ducklake.html">DuckLake observability</a></li>
+      <li><a href="docs/serverless_executor.html">Serverless executor</a></li>
+      <li><a href="docs/remote_execution.html">Beefy-node mode</a></li>
+      <li><a href="docs/browser.html">Running in the browser</a></li>
+    </ul>
+  </section>
+
+  <footer>
+    <p>
+      <a href="https://github.com/woozyking/duckpipe">GitHub</a> ·
+      <a href="https://pypi.org/project/duckpipe/">PyPI</a> ·
+      <a href="CHANGELOG.html">Changelog</a> ·
+      <a href="LICENSE">MIT License</a>
+    </p>
+    <p>Pre-1.0, working name — see <a href="DESIGN.html">DESIGN.md</a> §0.</p>
+  </footer>
+</main>
+</body>
+</html>

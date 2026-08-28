@@ -1,0 +1,51 @@
+name: pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; let an in-flight one finish rather than
+# canceling it mid-upload.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The WASM playground's own source bundle is gitignored (examples/
+      # README.md explains why) and generated from src/duckpipe/ on
+      # demand -- prepare_bundle.py has zero third-party dependencies,
+      # so this needs nothing beyond the runner's own python3. Must run
+      # before the Jekyll build below: it writes straight into
+      # examples/08_browser_wasm/, and Jekyll just passes those files
+      # through as static content, same as any other example file.
+      - name: Generate the browser-WASM example's bundle
+        run: python3 examples/08_browser_wasm/prepare_bundle.py
+
+      - name: Build with Jekyll
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./
+          destination: ./_site
+
+      - uses: actions/upload-pages-artifact@v3
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

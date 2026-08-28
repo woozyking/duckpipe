@@ -2,13 +2,43 @@ title: DuckPipe
 description: A serverless-first, DuckDB-native pipeline orchestrator.
 theme: jekyll-theme-minimal
 markdown: kramdown
+url: https://woozyking.github.io
+baseurl: /duckpipe
 
-# README.md and docs/README.md are served as their folder's index page
-# automatically (jekyll-readme-index, on by default on GitHub Pages);
-# relative links between .md files resolve to the right page on the
-# published site the same way they already do when browsing the repo
-# itself (jekyll-relative-links, also on by default) -- nothing here
-# needs to duplicate that.
+# docs/README.md is served as docs/'s index page automatically
+# (jekyll-readme-index); relative links between .md files resolve to
+# the right page on the published site the same way they already do
+# when browsing the repo itself (jekyll-relative-links); a bare .md
+# file with no front matter still becomes a real page instead of a
+# static download (jekyll-optional-front-matter), titled from its own
+# first heading (jekyll-titles-from-headings), and wrapped in the
+# theme's own layout so it actually gets styled instead of rendering
+# as a bare unwrapped HTML fragment (jekyll-default-layout -- without
+# it, optional-front-matter pages get no <head>, no stylesheet, no
+# theme at all). All six ship in GitHub's own `github-pages` gem and
+# are auto-loaded on pages built there, but listed explicitly here so
+# `bundle exec jekyll build` reproduces the same site locally (see
+# .github/workflows/pages.yml).
+# The root has its own hand-built index.html (the WASM playground is
+# the front door, not the README) -- jekyll-readme-index leaves it
+# alone whenever an index page already exists in a directory.
+#
+# jekyll-sitemap auto-generates sitemap.xml from whatever pages exist
+# at build time -- zero upkeep, and it's what robots.txt's `Sitemap:`
+# line points at. robots.txt and llms.txt are both hand-written, plain
+# static files at repo root (Jekyll just passes them through): the
+# former explicitly allows every crawler including AI/LLM ones, the
+# latter is the llmstxt.org convention -- a curated index for an LLM to
+# read instead of crawling the whole site. Keep llms.txt's link list in
+# sync with docs/README.md's by hand when either changes; both are
+# already independently hand-maintained indexes of the same docs.
+plugins:
+  - jekyll-readme-index
+  - jekyll-relative-links
+  - jekyll-optional-front-matter
+  - jekyll-titles-from-headings
+  - jekyll-default-layout
+  - jekyll-sitemap
 
 exclude:
   - uv.lock

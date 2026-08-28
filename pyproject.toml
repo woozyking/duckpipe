@@ -23,6 +23,13 @@ dependencies = [
     "rich>=13.9.0",
 ]
 
+[project.urls]
+Homepage = "https://woozyking.github.io/duckpipe/"
+Repository = "https://github.com/woozyking/duckpipe"
+Issues = "https://github.com/woozyking/duckpipe/issues"
+Documentation = "https://woozyking.github.io/duckpipe/docs/"
+Changelog = "https://github.com/woozyking/duckpipe/blob/main/CHANGELOG.md"
+
 [project.optional-dependencies]
 remote = [
     "fsspec>=2024.10.0",

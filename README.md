@@ -1,5 +1,15 @@
 # DuckPipe
 
+[![CI](https://github.com/woozyking/duckpipe/actions/workflows/ci.yml/badge.svg)](https://github.com/woozyking/duckpipe/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/duckpipe.svg)](https://pypi.org/project/duckpipe/)
+[![Python](https://img.shields.io/badge/python-%E2%89%A53.12-blue)](https://github.com/woozyking/duckpipe/blob/main/pyproject.toml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-informational)](LICENSE)
+
+**[Try it live in your browser →](https://woozyking.github.io/duckpipe/examples/08_browser_wasm/)**
+No install, nothing to run — a real DuckDB pipeline, entirely in this
+page, checking a file for sensitive-looking columns without ever
+uploading it.
+
 A serverless-first, DuckDB-native pipeline orchestrator. No scheduler
 daemon, no central metadata database required, no broker — a run is a
 Python process that starts, does work, records what it did to a
@@ -255,8 +265,7 @@ PR — also a live example of the GitHub Actions trigger recipe above.
 
 ## Status
 
-Pre-1.0, working name — see [`DESIGN.md`](DESIGN.md) §0 for the naming
-question. Everything documented above is implemented and covered by the
+Pre-1.0. Everything documented above is implemented and covered by the
 test suite: the core scheduler/fingerprinting/CLI, optional `fsspec`
 remote state sync with an advisory lock, task-scoped distributed
 execution (`only=`/`--only`) with delta-merge state, the DuckLake
@@ -268,5 +277,4 @@ via Pyodide, and the Mermaid DAG export.
 - Remote sync (`state_uri`) and the DuckLake backend don't work inside
   the browser example — needs `fsspec`-in-Pyodide verified first
   (DESIGN.md §8, §12).
-- Final package name and a versioning/compatibility promise are still
-  open decisions (DESIGN.md §12).
+- A versioning/compatibility promise are still open decisions (DESIGN.md §12).

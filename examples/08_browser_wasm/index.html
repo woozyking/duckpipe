@@ -61,6 +61,8 @@
   .verdict.clear { background: #2f9e4422; color: #2f9e44; }
   .col-list { margin: .3rem 0 .8rem; font-size: .85rem; }
   .col-list code { background: var(--border); border-radius: 4px; padding: .05rem .3rem; }
+  #dag-diagram { text-align: center; margin: .5rem 0; }
+  #dag-diagram svg { max-width: 100%; height: auto; }
 </style>
 </head>
 <body>
@@ -119,6 +121,9 @@
     <div id="confirmed-list" class="col-list"></div>
     <div id="worth-a-look-list" class="col-list"></div>
 
+    <h2 style="margin-top:1rem">pipeline DAG <span style="font-weight:400;color:#888">(the same view <code>duckpipe show --mermaid</code> prints from a terminal, colored by this run's actual statuses)</span></h2>
+    <div id="dag-diagram"></div>
+
     <h2 style="margin-top:1rem">task run</h2>
     <table id="status-table"><tbody></tbody></table>
 
@@ -141,6 +146,57 @@
 
 <script src="https://cdn.jsdelivr.net/pyodide/v314.0.6/full/pyodide.js"></script>
 <script type="module">
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+
+// Mirrors this pipeline's own DAG (`profile -> scan_sensitive_columns ->
+// triage_report`, see pipeline.py) and the exact status->color mapping
+// `duckpipe show --mermaid` uses (_MERMAID_STATUS_CLASS/_MERMAID_CLASS_DEFS
+// in src/duckpipe/cli.py) -- reimplemented in JS rather than imported,
+// since cli.py itself depends on typer/rich, which this browser bundle
+// never loads (see prepare_bundle.py).
+const DAG_TASKS = ["profile", "scan_sensitive_columns", "triage_report"];
+const DAG_EDGES = [
+  ["profile", "scan_sensitive_columns"],
+  ["profile", "triage_report"],
+  ["scan_sensitive_columns", "triage_report"],
+];
+const STATUS_CLASS = { success: "success", skipped: "skipped", failed: "failed", upstream_failed: "failed" };
+const CLASS_DEFS = {
+  success: "classDef success fill:#d4f7dc,stroke:#2f9e44,color:#1a1a1a",
+  skipped: "classDef skipped fill:#fff3cd,stroke:#d9a400,color:#1a1a1a",
+  failed: "classDef failed fill:#f8d7da,stroke:#d64545,color:#1a1a1a",
+};
+
+mermaid.initialize({
+  startOnLoad: false,
+  theme: window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "default",
+});
+
+function mermaidNodeId(name) {
+  return "t_" + name.replace(/[^A-Za-z0-9_]/g, "_");
+}
+
+function buildMermaidSource(statuses) {
+  const lines = ["flowchart TD"];
+  for (const t of DAG_TASKS) lines.push(`    ${mermaidNodeId(t)}["${t}"]`);
+  for (const [from, to] of DAG_EDGES) lines.push(`    ${mermaidNodeId(from)} --> ${mermaidNodeId(to)}`);
+  const used = [];
+  for (const t of DAG_TASKS) {
+    const cls = STATUS_CLASS[statuses[t]];
+    if (cls) {
+      lines.push(`    class ${mermaidNodeId(t)} ${cls}`);
+      if (!used.includes(cls)) used.push(cls);
+    }
+  }
+  for (const cls of used) lines.push(`    ${CLASS_DEFS[cls]}`);
+  return lines.join("\n");
+}
+
+async function renderDag(statuses) {
+  const { svg } = await mermaid.render("dag-svg", buildMermaidSource(statuses));
+  document.getElementById("dag-diagram").innerHTML = svg;
+}
+
 const logEl = document.getElementById("log");
 function log(msg) {
   logEl.textContent += `\n${msg}`;
@@ -285,12 +341,17 @@ json.dumps({
     log("state saved to IndexedDB -- reload this page and run again to see it skip.");
 
     const result = JSON.parse(resultJson);
-    document.getElementById("results").hidden = false;
+    // Populate everything, including the CDN-loaded mermaid diagram,
+    // before unhiding -- otherwise a caller polling for "#results is
+    // visible" (this page's own Playwright test included) can observe
+    // the section before it's actually finished filling in.
+    await renderDag(result.statuses);
     renderStatuses(result.statuses, result.errors);
     renderVerdict(result.results.triage_report);
     document.getElementById("report-json").textContent =
       JSON.stringify(result.results.triage_report, null, 2);
     await renderHistory(pyodide);
+    document.getElementById("results").hidden = false;
   } catch (err) {
     log(`ERROR: ${err}`);
   } finally {

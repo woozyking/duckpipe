@@ -1,0 +1,10 @@
+# Open source docs -- the goal is discovery, not gatekeeping. This
+# explicitly allows every crawler, including AI/LLM ones (GPTBot,
+# ClaudeBot, Google-Extended, PerplexityBot, and the rest): the same
+# outcome as having no robots.txt at all, stated on purpose rather than
+# left implicit, so a future maintainer doesn't have to wonder whether
+# an absence here was intentional.
+User-agent: *
+Allow: /
+
+Sitemap: https://woozyking.github.io/duckpipe/sitemap.xml
