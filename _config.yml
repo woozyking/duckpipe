@@ -45,3 +45,14 @@ exclude:
   - "**/__pycache__"
   - "*.duckdb"
   - "*.duckdb.wal"
+
+# Jekyll silently drops any file/directory starting with an underscore
+# by default (the same rule that hides _config.yml, _layouts/, etc.) --
+# without this, examples/08_browser_wasm/duckpipe_src/duckpipe/__init__.py
+# (written by prepare_bundle.py at build time, see pages.yml) never
+# makes it into the published site, so `import duckpipe` 404s in the
+# browser and evaluates GitHub's 404 page HTML as Python. Verified
+# empirically that this match is by bare filename, not a path glob --
+# "**/__init__.py"/"*/__init__.py" do NOT work here, only the bare name.
+include:
+  - "__init__.py"
