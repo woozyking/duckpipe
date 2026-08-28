@@ -44,7 +44,7 @@ the task itself like anywhere else:
 
 ```python
 import duckdb
-from duckpipe_tuning import suggest_duckdb_settings
+from duckpipe_tuning.duckdb import suggest_duckdb_settings
 
 
 @task(cache=True)

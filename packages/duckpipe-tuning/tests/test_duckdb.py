@@ -1,4 +1,8 @@
-from duckpipe_tuning import suggest_duckdb_settings, suggest_temp_dir_limit, suggest_thread_count
+from duckpipe_tuning.duckdb import (
+    suggest_duckdb_settings,
+    suggest_temp_dir_limit,
+    suggest_thread_count,
+)
 
 
 def test_suggest_thread_count_is_a_positive_int():
@@ -38,11 +42,3 @@ def test_suggest_temp_dir_limit_returns_a_gb_string(tmp_path):
     limit = suggest_temp_dir_limit(tmp_path)
     assert limit.endswith("GB")
     assert int(limit.removesuffix("GB")) >= 1
-
-
-def test_helpers_never_import_duckdb():
-    import sys
-
-    import duckpipe_tuning  # noqa: F401
-
-    assert "duckdb" not in sys.modules

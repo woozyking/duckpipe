@@ -1,7 +1,7 @@
 [project]
 name = "duckpipe-tuning"
 version = "0.1.0"
-description = "Optional host-spec-based tuning suggestions for DuckPipe tasks (DuckDB threads/memory_limit). Not imported by duckpipe's core."
+description = "Optional host-spec-based tuning suggestions for DuckPipe tasks -- one module per engine (DuckDB, Polars, Dask, Daft). Not imported by duckpipe's core."
 readme = "README.md"
 authors = [
     { name = "Runzhou Li", email = "runzhou.li@gmail.com" }

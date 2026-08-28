@@ -32,5 +32,5 @@ A live, runnable playground with no install is linked below.
 
 ## Optional
 
-- [packages/duckpipe-tuning/README.md](https://woozyking.github.io/duckpipe/packages/duckpipe-tuning/README.md): separate, optional package suggesting DuckDB thread/memory settings from host specs
+- [packages/duckpipe-tuning/README.md](https://woozyking.github.io/duckpipe/packages/duckpipe-tuning/README.md): separate, optional package suggesting host-spec-based settings, one module per engine (DuckDB, Polars, Dask, Daft)
 - [AGENTS.md](https://github.com/woozyking/duckpipe/blob/main/AGENTS.md): setup/test/lint commands and conventions, for an agent proposing a code change

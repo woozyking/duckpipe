@@ -223,21 +223,25 @@ Four upgrades, each opt-in and each usable on its own — full detail in
 
 ## Tuning (optional, separate package)
 
-`duckpipe-tuning` suggests DuckDB `threads`/`memory_limit` settings from
-host specs (CPU count, RAM) — pure functions, no query execution, no
-data inspection. It's a genuinely separate package in this repo's uv
+`duckpipe-tuning` suggests engine settings from host specs (CPU count,
+RAM) — pure functions, no query execution, no data inspection, no
+engine connection ever touched. One module per engine (DuckDB, Polars,
+Dask, Daft). It's a genuinely separate package in this repo's uv
 workspace (`packages/duckpipe-tuning/`), not a submodule: `duckpipe`
 itself never imports `psutil` or knows this package exists.
 
 ```python
 import duckdb
-from duckpipe_tuning import suggest_duckdb_settings
+from duckpipe_tuning.duckdb import suggest_duckdb_settings
 
 con = duckdb.connect()
 settings = suggest_duckdb_settings(workload="join")
 con.execute(f"SET threads = {settings['threads']}")
 con.execute(f"SET memory_limit = '{settings['memory_limit']}'")
 ```
+
+See [`packages/duckpipe-tuning/README.md`](packages/duckpipe-tuning/README.md)
+for Polars/Dask/Daft.
 
 ## Docs
 

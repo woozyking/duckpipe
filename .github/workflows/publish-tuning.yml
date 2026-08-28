@@ -1,0 +1,67 @@
+name: publish-tuning
+
+# Separate tag prefix from the root duckpipe package's own `v*` releases
+# (publish.yml) -- they version and release independently.
+on:
+  push:
+    tags: ["tuning-v*"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Install (workspace)
+        run: uv sync --group dev
+
+      - name: Lint
+        run: uv run --directory packages/duckpipe-tuning ruff check .
+
+      - name: Test duckpipe-tuning
+        run: uv run --directory packages/duckpipe-tuning pytest
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+
+      - name: Verify tag matches package version
+        run: |
+          tag="${GITHUB_REF_NAME#tuning-v}"
+          version="$(uv run python -c 'import tomllib; print(tomllib.load(open("packages/duckpipe-tuning/pyproject.toml", "rb"))["project"]["version"])')"
+          if [ "$tag" != "$version" ]; then
+            echo "::error::tag tuning-v$tag does not match packages/duckpipe-tuning/pyproject.toml version $version"
+            exit 1
+          fi
+
+      - name: Build sdist and wheel
+        run: uv build --package duckpipe-tuning
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-tuning
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi-tuning
+      url: https://pypi.org/project/duckpipe-tuning/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-tuning
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
