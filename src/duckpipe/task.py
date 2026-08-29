@@ -49,6 +49,7 @@ class Task:
         cache_backend: str = "pickle",
         depends_on: list[Task] | None = None,
         extra_fingerprint: list[Any] | None = None,
+        memory_limit_mb: int | None = None,
     ) -> None:
         self.func = func
         self.name = name or func.__name__
@@ -58,6 +59,7 @@ class Task:
         self.cache_backend = cache_backend
         self.depends_on = list(depends_on or [])
         self.extra_fingerprint = list(extra_fingerprint or [])
+        self.memory_limit_mb = memory_limit_mb
         self.signature = inspect.signature(func)
         self.source_fingerprint = fingerprint_source(func)
         self.__name__ = self.name
@@ -96,6 +98,7 @@ def task(
     cache_backend: str = "pickle",
     depends_on: list[Task] | None = None,
     extra_fingerprint: list[Any] | None = None,
+    memory_limit_mb: int | None = None,
 ) -> Task | Callable[[Callable[..., Any]], Task]:
     """Decorate a plain Python function as a DuckPipe task.
 
@@ -108,6 +111,14 @@ def task(
         @task(retries=3, cache=True)
         def transform(rel=extract):  # `rel=extract` infers the edge
             return rel.filter("amount > 0")
+
+    ``memory_limit_mb`` runs this task in an isolated subprocess under a
+    physical RSS ceiling -- crossing it kills the subprocess and records
+    ``status="oom"`` instead of a crash or a silent failure. Needs the
+    optional ``duckpipe[memcap]`` extra (``cloudpickle`` + ``psutil``);
+    see ``duckpipe._memcap`` for why a watchdog instead of
+    ``resource.RLIMIT_AS``, and its own picklability limits (the same
+    ones ``cache=True``'s pickle backend already has).
     """
 
     def wrap(fn: Callable[..., Any]) -> Task:
@@ -120,6 +131,7 @@ def task(
             cache_backend=cache_backend,
             depends_on=depends_on,
             extra_fingerprint=extra_fingerprint,
+            memory_limit_mb=memory_limit_mb,
         )
 
     if func is not None:

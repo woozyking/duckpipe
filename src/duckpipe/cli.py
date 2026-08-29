@@ -36,7 +36,7 @@ app = typer.Typer(
 )
 console = Console()
 
-_STATUS_STYLE = {"success": "green", "skipped": "yellow", "failed": "red"}
+_STATUS_STYLE = {"success": "green", "skipped": "yellow", "failed": "red", "oom": "magenta"}
 
 # A malformed pipeline (a cycle, a duplicate task name, a plain typo that
 # blows up at import time), a locked state_uri, or a scoped (--only) run

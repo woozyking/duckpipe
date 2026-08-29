@@ -1,11 +1,43 @@
 # Changelog
 
 All notable changes to this project are documented here. Format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.0.0/); versioning
-intent is described in [`DESIGN.md`](DESIGN.md) §0 until a 1.0 promise
-is made explicit.
+[Keep a Changelog](https://keepachangelog.com/en/1.0.0/); the
+versioning/compatibility promise itself is still an open decision
+(`DESIGN.md` §12) until a 1.0.
 
 ## [Unreleased]
+
+## [0.3.0] - 2026-08-29
+
+### Added
+
+- `@task(memory_limit_mb=N)` — an opt-in per-task physical memory
+  ceiling: runs the task in an isolated subprocess under an RSS
+  watchdog, recording `status="oom"` on breach instead of a crash or a
+  silent OS OOM-kill. Needs the new `duckpipe[memcap]` extra
+  (`cloudpickle` + `psutil`); the core dependency tree is untouched
+  otherwise. Generalizes a pattern proven in production dogfooding
+  (a real multi-engine benchmark harness) into DuckPipe's core.
+- `to_mermaid(..., subgraphs=...)` — render a task as a real nested
+  Mermaid subgraph containing another pipeline's own shape, for a task
+  whose body runs one (nesting `duckpipe.run()` inside a task is safe,
+  confirmed directly). DuckPipe can't discover this relationship on its
+  own; the pipeline author states it explicitly.
+- `examples/09_nested_pipeline` — a concrete, runnable demonstration of
+  both of the above: two nested sub-pipeline calls rendered as real
+  Mermaid subgraphs, plus two real bugs the example itself caught by
+  actually running it (see its own README).
+- `docs/agent_authored.md` — DuckPipe's position on agent-built
+  pipelines: the agent writes you a plain, reviewable Python file,
+  rather than operating an opaque one on your behalf through a
+  platform-specific API.
+
+### Fixed
+
+- `v_task_stats`/`v_run_summary`'s `failed_count` now includes `oom`
+  alongside `failed`/`upstream_failed` — without this, an oom'd task
+  would silently disappear from `duckpipe stats` instead of counting
+  as a failure.
 
 ## [0.2.0] - 2026-08-28
 
@@ -71,5 +103,6 @@ what's explicitly *not* built yet.
   data, one per facet of the above.
 - Docs site on GitHub Pages, including a live in-browser playground.
 
+[0.3.0]: https://github.com/woozyking/duckpipe/releases/tag/v0.3.0
 [0.2.0]: https://github.com/woozyking/duckpipe/releases/tag/v0.2.0
 [0.1.0]: https://github.com/woozyking/duckpipe/releases/tag/v0.1.0

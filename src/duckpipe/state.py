@@ -119,7 +119,8 @@ SELECT
     count(t.task_name) AS task_count,
     sum(CASE WHEN t.status = 'success' THEN 1 ELSE 0 END) AS succeeded_count,
     sum(CASE WHEN t.status = 'skipped' THEN 1 ELSE 0 END) AS skipped_count,
-    sum(CASE WHEN t.status IN ('failed', 'upstream_failed') THEN 1 ELSE 0 END) AS failed_count
+    sum(CASE WHEN t.status IN ('failed', 'upstream_failed', 'oom')
+        THEN 1 ELSE 0 END) AS failed_count
 FROM pipeline_runs p
 LEFT JOIN task_runs t ON t.run_id = p.run_id
 GROUP BY p.run_id, p.module_path, p.started_at, p.ended_at, p.status;
@@ -131,7 +132,7 @@ SELECT
     avg(duration_ms) AS avg_duration_ms,
     max(duration_ms) AS max_duration_ms,
     sum(CASE WHEN status = 'skipped' THEN 1 ELSE 0 END) AS skipped_count,
-    sum(CASE WHEN status IN ('failed', 'upstream_failed') THEN 1 ELSE 0 END) AS failed_count,
+    sum(CASE WHEN status IN ('failed', 'upstream_failed', 'oom') THEN 1 ELSE 0 END) AS failed_count,
     max(ended_at) AS last_run_at
 FROM task_runs
 GROUP BY task_name;

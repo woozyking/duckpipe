@@ -21,6 +21,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any, Literal
 
+from duckpipe._memcap import MemoryLimitExceeded, run_capped
 from duckpipe.dag import DAG, build_dag
 from duckpipe.fingerprint import resolve_fingerprints
 from duckpipe.state import LARGE_CACHE_WARN_BYTES, StateStore, is_ducklake, new_run_id, now
@@ -28,8 +29,8 @@ from duckpipe.task import Task
 
 logger = logging.getLogger("duckpipe")
 
-Status = Literal["success", "skipped", "failed", "upstream_failed"]
-_FAILURE_STATUSES = ("failed", "upstream_failed")
+Status = Literal["success", "skipped", "failed", "upstream_failed", "oom"]
+_FAILURE_STATUSES = ("failed", "upstream_failed", "oom")
 
 
 class DuckLakeCombinationError(ValueError):
@@ -80,6 +81,11 @@ async def _run_with_retries(t: Task, kwargs: dict[str, Any]) -> Any:
     last_exc: BaseException | None = None
     for attempt in range(t.retries + 1):
         try:
+            if t.memory_limit_mb is not None:
+                return await loop.run_in_executor(
+                    None,
+                    lambda: run_capped(t.name, t.func, kwargs, limit_mb=t.memory_limit_mb),
+                )
             return await loop.run_in_executor(None, lambda: t.func(**kwargs))
         except Exception as exc:
             last_exc = exc
@@ -161,12 +167,13 @@ async def _execute_dag(
             value = await _run_with_retries(t, kwargs)
         except Exception as exc:
             ended = now()
-            summary.statuses[t.name] = "failed"
+            status: Status = "oom" if isinstance(exc, MemoryLimitExceeded) else "failed"
+            summary.statuses[t.name] = status
             summary.errors[t.name] = str(exc)
-            with store.transaction(f"task {t.name} failed: {exc}"):
+            with store.transaction(f"task {t.name} {status}: {exc}"):
                 store.record_lineage(t.name, upstream_names)
-                store.record_task_run(run_id, t.name, "failed", started, ended, fp, error=str(exc))
-            logger.error("task %s failed: %s", t.name, exc)
+                store.record_task_run(run_id, t.name, status, started, ended, fp, error=str(exc))
+            logger.error("task %s %s: %s", t.name, status, exc)
             return
 
         ended = now()
@@ -278,14 +285,15 @@ async def _execute_one(
         value = await _run_with_retries(target, kwargs)
     except Exception as exc:
         ended = now()
-        summary.statuses[target.name] = "failed"
+        status: Status = "oom" if isinstance(exc, MemoryLimitExceeded) else "failed"
+        summary.statuses[target.name] = status
         summary.errors[target.name] = str(exc)
-        with write_store.transaction(f"task {target.name} failed: {exc}"):
+        with write_store.transaction(f"task {target.name} {status}: {exc}"):
             write_store.record_lineage(target.name, upstream_names)
             write_store.record_task_run(
-                run_id, target.name, "failed", started, ended, fp, error=str(exc)
+                run_id, target.name, status, started, ended, fp, error=str(exc)
             )
-        logger.error("task %s failed: %s", target.name, exc)
+        logger.error("task %s %s: %s", target.name, status, exc)
         return summary
 
     ended = now()

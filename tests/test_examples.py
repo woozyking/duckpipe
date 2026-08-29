@@ -190,6 +190,49 @@ def test_ducklake_observability_example():
         shutil.rmtree(data_dir, ignore_errors=True)
 
 
+def test_nested_pipeline_example(tmp_path):
+    example = EXAMPLES / "09_nested_pipeline"
+    outer_db = example / "duckpipe.db"
+    card_db = example / "report_card.duckdb"
+    cash_db = example / "report_cash.duckdb"
+    try:
+        first = run(example / "pipeline.py", db_path=outer_db, max_workers=1)
+        assert first.success
+        assert first.results["combine"]["card"]  # non-empty daily rows
+        assert first.results["combine"]["cash"]
+        assert card_db.exists()
+        assert cash_db.exists()
+
+        second = run(example / "pipeline.py", db_path=outer_db, max_workers=1)
+        assert second.success
+        assert second.statuses["report_card"] == "skipped"
+        assert second.statuses["report_cash"] == "skipped"
+
+        # The standalone sub-pipeline is independently runnable too, with
+        # its own separate state file -- not the outer pipeline's.
+        standalone_db = tmp_path / "report_standalone.duckdb"
+        standalone = run(example / "report_pipeline.py", db_path=standalone_db)
+        assert standalone.success
+        assert standalone.results["aggregate"]
+
+        # show_nested_mermaid.py: the concrete `subgraphs=` demonstration.
+        result = subprocess.run(
+            ["uv", "run", "python", "show_nested_mermaid.py"],
+            cwd=example,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert 'subgraph t_report_card ["report_card"]' in result.stdout
+        assert 'subgraph t_report_cash ["report_cash"]' in result.stdout
+        assert "class t_report_card skipped" in result.stdout
+    finally:
+        for db in (outer_db, card_db, cash_db):
+            db.unlink(missing_ok=True)
+            Path(str(db) + ".wal").unlink(missing_ok=True)
+
+
 @pytest.mark.skipif(not _chromium_available(), reason="needs `uv run playwright install chromium`")
 async def test_browser_wasm_example():
     import functools

@@ -11,6 +11,9 @@ Each one is short and links back to the example code it describes.
   recipes.
 - [`interop.md`](interop.md) — embedding a pipeline inside
   Airflow/Dagster/Prefect.
+- [`agent_authored.md`](agent_authored.md) — the agent writes you a
+  pipeline, plain Python you can review, instead of operating an opaque
+  one on your behalf.
 
 **Scaling out**
 

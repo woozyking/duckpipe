@@ -19,6 +19,7 @@ A live, runnable playground with no install is linked below.
 - [docs/why-duckpipe.md](https://woozyking.github.io/duckpipe/docs/why-duckpipe.md): the pain points this design responds to
 - [docs/triggers.md](https://woozyking.github.io/duckpipe/docs/triggers.md): cron, GitHub Actions, Lambda, webhook recipes
 - [docs/interop.md](https://woozyking.github.io/duckpipe/docs/interop.md): embedding a pipeline inside Airflow/Dagster/Prefect
+- [docs/agent_authored.md](https://woozyking.github.io/duckpipe/docs/agent_authored.md): the agent writes you a pipeline, plain Python you can review, instead of operating an opaque one on your behalf
 - [docs/distributed_execution.md](https://woozyking.github.io/duckpipe/docs/distributed_execution.md): syncing state to remote storage, scoping a run to one task
 - [docs/ducklake.md](https://woozyking.github.io/duckpipe/docs/ducklake.md): the opt-in DuckLake observability upgrade (time travel, schema evolution)
 - [docs/serverless_executor.md](https://woozyking.github.io/duckpipe/docs/serverless_executor.md): the same distributed-execution primitive, checked across two invocation shapes
@@ -27,7 +28,7 @@ A live, runnable playground with no install is linked below.
 
 ## Examples
 
-- [examples/README.md](https://woozyking.github.io/duckpipe/examples/README.md): index of all eight example pipelines, each one facet of DuckPipe
+- [examples/README.md](https://woozyking.github.io/duckpipe/examples/README.md): index of all nine example pipelines, each one facet of DuckPipe
 - [examples/08_browser_wasm/](https://woozyking.github.io/duckpipe/examples/08_browser_wasm/): try DuckPipe live in a browser tab, no install — checks a file for sensitive-looking columns without ever uploading it
 
 ## Optional

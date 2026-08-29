@@ -90,6 +90,7 @@ uv add "duckpipe[gcs]"          # + gcsfs, for state_uri="gs://..."
 uv add "duckpipe[azure]"        # + adlfs, for state_uri="az://..."
 uv add "duckpipe[arrow]"        # + pyarrow, for cache_backend="arrow"
 uv add "duckpipe[ducklake]"     # + pytz, for the DuckLake observability backend
+uv add "duckpipe[memcap]"       # + cloudpickle, psutil, for @task(memory_limit_mb=...)
 uv add duckpipe-tuning          # optional, separate package -- see below
 ```
 
@@ -141,6 +142,13 @@ trigger-specific install recipes).
   — everything else with `cache=True` and unchanged code just skips, the
   same as any other unchanged re-run.
 - **Retries are `@task(retries=N, retry_delay=seconds)`.**
+- **A per-task physical memory ceiling is `@task(memory_limit_mb=N)`.**
+  Runs that one task in an isolated subprocess under an RSS watchdog;
+  crossing the limit kills it and records `status="oom"` — a real
+  result in the state file, not a crash or a silent OS OOM-kill. Needs
+  the optional `duckpipe[memcap]` extra. Opt-in, and it generalizes a
+  pattern proven in production dogfooding rather than invented from
+  scratch — see [`DESIGN.md`](DESIGN.md) §5.
 - **Triggers are just "run the command."** Cron, CI, a webhook handler, a
   Lambda entrypoint, or a single step embedded inside Airflow/Prefect/
   Dagster all just call `duckpipe.run(...)` — DuckPipe has no scheduler
@@ -182,6 +190,16 @@ flowchart TD
     classDef success fill:#d4f7dc,stroke:#2f9e44,color:#1a1a1a
 ```
 
+`duckpipe.to_mermaid()`/`duckpipe.to_json()` are the same rendering,
+importable directly — a notebook or a custom dashboard doesn't need to
+shell out to the CLI just to get the string. `to_mermaid` also takes an
+optional `subgraphs=` argument: if one of your tasks' own body runs
+another pipeline (nesting `duckpipe.run(...)` inside a task is safe —
+see [`DESIGN.md`](DESIGN.md) §11), pass that sub-pipeline's own
+topological order to render it as a real nested subgraph instead of a
+plain node — DuckPipe can't discover that relationship on its own, so
+this is how you state it.
+
 The state file's own views (`v_latest_task_status`, `v_run_summary`,
 `v_task_stats`) are plain SQL and queryable from any DuckDB client, not
 just through the CLI:
@@ -192,11 +210,11 @@ duckdb duckpipe.db -c "SELECT * FROM v_run_summary ORDER BY started_at DESC LIMI
 
 ## Examples
 
-Eight realistic pipelines over real, bundled open data (NYC TLC taxi
+Nine realistic pipelines over real, bundled open data (NYC TLC taxi
 trips) live in [`examples/`](examples/README.md) — one per facet of
 DuckPipe, from a plain batch ETL through distributed execution,
-DuckLake, a serverless executor, and running in the browser. Every
-non-distributed one also runs unmodified against the full public
+DuckLake, a serverless executor, nested pipelines, and running in the
+browser. Every non-distributed one also runs unmodified against the full public
 dataset by setting one environment variable; see
 [`examples/data/README.md`](examples/data/README.md).
 
@@ -246,10 +264,10 @@ for Polars/Dask/Daft.
 ## Docs
 
 [`docs/`](docs/) has the full chapter list — triggers, interop,
-distributed execution, DuckLake, the serverless executor, beefy-node
-mode, and the browser — each short and linking back to the example code
-it describes. [`DESIGN.md`](DESIGN.md) is the design rationale and
-prior-art landscape check behind all of it.
+agent-authored pipelines, distributed execution, DuckLake, the
+serverless executor, beefy-node mode, and the browser — each short and
+linking back to the example code it describes. [`DESIGN.md`](DESIGN.md)
+is the design rationale and prior-art landscape check behind all of it.
 
 ## Development
 
@@ -275,7 +293,8 @@ remote state sync with an advisory lock, task-scoped distributed
 execution (`only=`/`--only`) with delta-merge state, the DuckLake
 observability upgrade (local SQLite catalog or a shared Postgres/MySQL
 one), the serverless-executor and beefy-node patterns, browser execution
-via Pyodide, and the Mermaid DAG export.
+via Pyodide, the Mermaid DAG export, and the opt-in per-task memory
+ceiling (`memory_limit_mb`).
 
 **Not yet built:**
 - Remote sync (`state_uri`) and the DuckLake backend don't work inside

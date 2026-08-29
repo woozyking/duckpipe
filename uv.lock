@@ -492,6 +492,15 @@ wheels = [
 ]
 
 [[package]]
+name = "cloudpickle"
+version = "3.1.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/27/fb/576f067976d320f5f0114a8d9fa1215425441bb35627b1993e5afd8111e5/cloudpickle-3.1.2.tar.gz", hash = "sha256:7fda9eb655c9c230dab534f1983763de5835249750e85fbcef43aaa30a9a2414", size = 22330, upload-time = "2025-11-03T09:25:26.604Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/88/39/799be3f2f0f38cc727ee3b4f1445fe6d5e4133064ec2e4115069418a5bb6/cloudpickle-3.1.2-py3-none-any.whl", hash = "sha256:9acb47f6afd73f60dc1df93bb801b472f05ff42fa6c84167d25cb206be1fbf4a", size = 22228, upload-time = "2025-11-03T09:25:25.534Z" },
+]
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -590,7 +599,7 @@ wheels = [
 
 [[package]]
 name = "duckpipe"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "duckdb" },
@@ -613,6 +622,10 @@ gcs = [
     { name = "fsspec" },
     { name = "gcsfs" },
 ]
+memcap = [
+    { name = "cloudpickle" },
+    { name = "psutil" },
+]
 remote = [
     { name = "fsspec" },
 ]
@@ -623,11 +636,13 @@ s3 = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "cloudpickle" },
     { name = "duckpipe-tuning" },
     { name = "fsspec" },
     { name = "pandas" },
     { name = "playwright" },
     { name = "polars" },
+    { name = "psutil" },
     { name = "pyarrow" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -638,27 +653,31 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "adlfs", marker = "extra == 'azure'", specifier = ">=2024.10.0" },
+    { name = "cloudpickle", marker = "extra == 'memcap'", specifier = ">=3.1.0" },
     { name = "duckdb", specifier = ">=1.4.0" },
     { name = "duckpipe", extras = ["remote"], marker = "extra == 'azure'" },
     { name = "duckpipe", extras = ["remote"], marker = "extra == 'gcs'" },
     { name = "duckpipe", extras = ["remote"], marker = "extra == 's3'" },
     { name = "fsspec", marker = "extra == 'remote'", specifier = ">=2024.10.0" },
     { name = "gcsfs", marker = "extra == 'gcs'", specifier = ">=2024.10.0" },
+    { name = "psutil", marker = "extra == 'memcap'", specifier = ">=6.0.0" },
     { name = "pyarrow", marker = "extra == 'arrow'", specifier = ">=18.0.0" },
     { name = "pytz", marker = "extra == 'ducklake'", specifier = ">=2024.1" },
     { name = "rich", specifier = ">=13.9.0" },
     { name = "s3fs", marker = "extra == 's3'", specifier = ">=2024.10.0" },
     { name = "typer", specifier = ">=0.15.0" },
 ]
-provides-extras = ["remote", "s3", "gcs", "azure", "arrow", "ducklake"]
+provides-extras = ["remote", "s3", "gcs", "azure", "arrow", "memcap", "ducklake"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "cloudpickle", specifier = ">=3.1.0" },
     { name = "duckpipe-tuning", editable = "packages/duckpipe-tuning" },
     { name = "fsspec", specifier = ">=2024.10.0" },
     { name = "pandas", specifier = ">=2.2.0" },
     { name = "playwright", specifier = ">=1.62.0" },
     { name = "polars", specifier = ">=1.17.0" },
+    { name = "psutil", specifier = ">=6.0.0" },
     { name = "pyarrow", specifier = ">=18.0.0" },
     { name = "pytest", specifier = ">=8.3.0" },
     { name = "pytest-asyncio", specifier = ">=0.25.0" },

@@ -175,11 +175,13 @@ _MERMAID_STATUS_CLASS = {
     "skipped": "skipped",
     "failed": "failed",
     "upstream_failed": "failed",
+    "oom": "oom",
 }
 _MERMAID_CLASS_DEFS = {
     "success": "classDef success fill:#d4f7dc,stroke:#2f9e44,color:#1a1a1a",
     "skipped": "classDef skipped fill:#fff3cd,stroke:#d9a400,color:#1a1a1a",
     "failed": "classDef failed fill:#f8d7da,stroke:#d64545,color:#1a1a1a",
+    "oom": "classDef oom fill:#f3e3fb,stroke:#9c4dcc,color:#1a1a1a",
 }
 
 
@@ -191,8 +193,69 @@ def _mermaid_node_id(name: str) -> str:
     return "t_" + re.sub(r"[^A-Za-z0-9_]", "_", name)
 
 
+# A subgraph's own sub-order, and (optionally) that sub-pipeline's own
+# last_status dict -- see to_mermaid's `subgraphs` param.
+_Subgraph = tuple[list[Task], "dict[str, tuple[str, str]] | None"]
+
+
+def _mermaid_body(
+    order: list[Task],
+    last_status: dict[str, tuple[str, str]],
+    subgraphs: dict[str, _Subgraph],
+    prefix: str,
+) -> tuple[list[str], list[str]]:
+    """One nesting level's worth of lines, plus which status classes it
+    used. ``prefix`` namespaces this level's node ids so a nested
+    subgraph's tasks never collide with the outer diagram's own (or a
+    sibling subgraph's) -- Mermaid needs every id in the whole diagram
+    to be unique, nesting or not.
+    """
+
+    def nid(name: str) -> str:
+        return prefix + _mermaid_node_id(name)
+
+    lines: list[str] = []
+    used_classes: list[str] = []
+
+    for t in order:
+        label = t.name.replace('"', "&quot;")
+        if t.name in subgraphs:
+            sub_order, sub_status = subgraphs[t.name]
+            lines.append(f'    subgraph {nid(t.name)} ["{label}"]')
+            sub_lines, sub_used = _mermaid_body(
+                sub_order, sub_status or {}, {}, prefix=f"{nid(t.name)}__"
+            )
+            lines.extend(f"    {line}" for line in sub_lines)
+            lines.append("    end")
+            for cls in sub_used:
+                if cls not in used_classes:
+                    used_classes.append(cls)
+        else:
+            lines.append(f'    {nid(t.name)}["{label}"]')
+
+    for t in order:
+        for up in t.upstream_tasks():
+            lines.append(f"    {nid(up.name)} --> {nid(t.name)}")
+
+    for t in order:
+        # A subgraph id is addressable by `class` too (Mermaid treats it
+        # like any other node for this purpose) -- the wrapper task's own
+        # outer status still colors its border, on top of (not instead
+        # of) whatever its own sub-pipeline's inner tasks show.
+        status = last_status.get(t.name, (None, None))[0]
+        cls = _MERMAID_STATUS_CLASS.get(status)
+        if cls:
+            lines.append(f"    class {nid(t.name)} {cls}")
+            if cls not in used_classes:
+                used_classes.append(cls)
+
+    return lines, used_classes
+
+
 def to_mermaid(
-    order: list[Task], last_status: dict[str, tuple[str, str]] | None = None
+    order: list[Task],
+    last_status: dict[str, tuple[str, str]] | None = None,
+    subgraphs: dict[str, _Subgraph] | None = None,
 ) -> str:
     """A `flowchart TD` of a task's real dependency edges, one node per
     task (labeled with its real name, not the sanitized id), colored by
@@ -203,27 +266,21 @@ def to_mermaid(
     ``last_status`` maps a task name to ``(status, timestamp)``, the same
     shape ``StateStore.last_status`` returns -- omit it for a plain,
     uncolored diagram of the DAG's shape alone.
-    """
-    last_status = last_status or {}
-    lines = ["flowchart TD"]
-    for t in order:
-        label = t.name.replace('"', "&quot;")
-        lines.append(f'    {_mermaid_node_id(t.name)}["{label}"]')
-    for t in order:
-        for up in t.upstream_tasks():
-            lines.append(f"    {_mermaid_node_id(up.name)} --> {_mermaid_node_id(t.name)}")
 
-    used_classes: list[str] = []
-    for t in order:
-        status = last_status.get(t.name, (None, None))[0]
-        cls = _MERMAID_STATUS_CLASS.get(status)
-        if cls:
-            lines.append(f"    class {_mermaid_node_id(t.name)} {cls}")
-            if cls not in used_classes:
-                used_classes.append(cls)
+    ``subgraphs`` renders a task as a Mermaid ``subgraph`` containing
+    another pipeline's own shape, instead of a plain node -- for the one
+    case DuckPipe can't discover on its own: a task whose body happens to
+    run another pipeline (e.g. via `duckpipe.run(...)`, itself always
+    safe to nest -- see DESIGN.md sec 5). Maps a task name to
+    ``(that sub-pipeline's topological order, its own last_status or
+    None)`` -- only the pipeline author knows this relationship, so it's
+    stated explicitly rather than guessed at from a task's code.
+    """
+    lines, used_classes = _mermaid_body(order, last_status or {}, subgraphs or {}, prefix="")
+    result = ["flowchart TD", *lines]
     for cls in used_classes:
-        lines.append(f"    {_MERMAID_CLASS_DEFS[cls]}")
-    return "\n".join(lines)
+        result.append(f"    {_MERMAID_CLASS_DEFS[cls]}")
+    return "\n".join(result)
 
 
 def to_json(

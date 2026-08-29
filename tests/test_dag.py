@@ -89,3 +89,46 @@ def test_to_json_includes_next_run_when_given():
     by_task = {e["task"]: e for e in entries}
     assert by_task["extract"]["next_run"] == "run (no prior state)"
     assert "next_run" not in by_task["transform_a"]
+
+
+def test_to_mermaid_renders_a_nested_subgraph_with_namespaced_ids():
+    """DuckPipe can't discover on its own that a task's body happens to
+    run another pipeline -- `subgraphs` is how a pipeline author who
+    *does* know that states it explicitly (DESIGN.md sec 5)."""
+    outer_order = build_dag(FIXTURES / "nesting_outer_dag.py").topological_order()
+    sub_order = build_dag(FIXTURES / "toy_dag.py").topological_order()
+
+    diagram = to_mermaid(outer_order, subgraphs={"suite_02": (sub_order, None)})
+
+    assert 'subgraph t_suite_02 ["suite_02"]' in diagram
+    assert "    end" in diagram
+    # The nested "extract" is namespaced under the wrapper task's own id --
+    # never collides with the *outer* DAG's own, distinct "extract" task.
+    assert "t_suite_02__t_extract" in diagram
+    assert 't_extract["extract"]' in diagram  # the outer one, unprefixed
+    assert diagram.count('["extract"]') == 2  # one outer, one (namespaced) inner
+    # Edges inside the nested subgraph are namespaced consistently too.
+    assert "t_suite_02__t_extract --> t_suite_02__t_transform_a" in diagram
+    # The outer DAG's own edges are untouched by the nesting.
+    assert "t_extract --> t_suite_02" in diagram
+    assert "t_suite_02 --> t_validate" in diagram
+
+
+def test_to_mermaid_nested_subgraph_colors_inner_tasks_by_their_own_status():
+    outer_order = build_dag(FIXTURES / "nesting_outer_dag.py").topological_order()
+    sub_order = build_dag(FIXTURES / "toy_dag.py").topological_order()
+    sub_status = {"extract": ("success", "2024-01-01")}
+
+    diagram = to_mermaid(
+        outer_order,
+        last_status={"suite_02": ("success", "2024-01-01")},
+        subgraphs={"suite_02": (sub_order, sub_status)},
+    )
+
+    # The inner task is colored by the *sub-pipeline's own* history...
+    assert "class t_suite_02__t_extract success" in diagram
+    # ...and the wrapper task itself still gets its own outer status too --
+    # both are meaningful, neither replaces the other.
+    assert "class t_suite_02 success" in diagram
+    # classDef is emitted exactly once even though both levels used it.
+    assert diagram.count("classDef success") == 1
