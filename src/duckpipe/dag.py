@@ -11,6 +11,7 @@ naturally puts its tasks.
 from __future__ import annotations
 
 import importlib.util
+import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -162,3 +163,86 @@ def build_dag(source: str | Path | ModuleType) -> DAG:
     dag = DAG(module=module, tasks=tasks)
     dag.topological_order()  # raises CycleError early if malformed
     return dag
+
+
+# --- Rendering / serialization -------------------------------------------
+# Both used by `duckpipe show`, but public here too: a notebook, a custom
+# dashboard, or a CI comment step wants the same DAG-as-Mermaid/-JSON
+# without shelling out to the CLI as a subprocess just to get a string.
+
+_MERMAID_STATUS_CLASS = {
+    "success": "success",
+    "skipped": "skipped",
+    "failed": "failed",
+    "upstream_failed": "failed",
+}
+_MERMAID_CLASS_DEFS = {
+    "success": "classDef success fill:#d4f7dc,stroke:#2f9e44,color:#1a1a1a",
+    "skipped": "classDef skipped fill:#fff3cd,stroke:#d9a400,color:#1a1a1a",
+    "failed": "classDef failed fill:#f8d7da,stroke:#d64545,color:#1a1a1a",
+}
+
+
+def _mermaid_node_id(name: str) -> str:
+    # Task names are usually valid identifiers already (a function's own
+    # __name__, or an explicit name=...), but a Mermaid node id has its
+    # own, stricter rules -- sanitize rather than assume, so an unusual
+    # name= never produces a broken diagram.
+    return "t_" + re.sub(r"[^A-Za-z0-9_]", "_", name)
+
+
+def to_mermaid(
+    order: list[Task], last_status: dict[str, tuple[str, str]] | None = None
+) -> str:
+    """A `flowchart TD` of a task's real dependency edges, one node per
+    task (labeled with its real name, not the sanitized id), colored by
+    ``last_status`` when given -- pastes straight into any Markdown that
+    renders Mermaid (GitHub, GitLab, many others), or into a notebook
+    cell via ``IPython.display.Markdown``.
+
+    ``last_status`` maps a task name to ``(status, timestamp)``, the same
+    shape ``StateStore.last_status`` returns -- omit it for a plain,
+    uncolored diagram of the DAG's shape alone.
+    """
+    last_status = last_status or {}
+    lines = ["flowchart TD"]
+    for t in order:
+        label = t.name.replace('"', "&quot;")
+        lines.append(f'    {_mermaid_node_id(t.name)}["{label}"]')
+    for t in order:
+        for up in t.upstream_tasks():
+            lines.append(f"    {_mermaid_node_id(up.name)} --> {_mermaid_node_id(t.name)}")
+
+    used_classes: list[str] = []
+    for t in order:
+        status = last_status.get(t.name, (None, None))[0]
+        cls = _MERMAID_STATUS_CLASS.get(status)
+        if cls:
+            lines.append(f"    class {_mermaid_node_id(t.name)} {cls}")
+            if cls not in used_classes:
+                used_classes.append(cls)
+    for cls in used_classes:
+        lines.append(f"    {_MERMAID_CLASS_DEFS[cls]}")
+    return "\n".join(lines)
+
+
+def to_json(
+    order: list[Task], next_run: dict[str, str] | None = None
+) -> list[dict[str, object]]:
+    """Topological order plus dependency edges, as plain JSON-serializable
+    dicts -- the discovery primitive a coordinator dispatching
+    `--only <task>` calls needs (DESIGN.md sec 8). Pass ``next_run`` (task
+    name -> a human-readable preview string, e.g. from `would_skip`) to
+    include it per task; omitted entirely when not given, rather than
+    guessed at."""
+    next_run = next_run or {}
+    result: list[dict[str, object]] = []
+    for t in order:
+        entry: dict[str, object] = {
+            "task": t.name,
+            "depends_on": sorted(u.name for u in t.upstream_tasks()),
+        }
+        if t.name in next_run:
+            entry["next_run"] = next_run[t.name]
+        result.append(entry)
+    return result

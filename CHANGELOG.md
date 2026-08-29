@@ -7,6 +7,38 @@ is made explicit.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-28
+
+### Added
+
+- `duckpipe.to_mermaid()` / `duckpipe.to_json()` — the DAG rendering
+  `duckpipe show --mermaid`/`--json` already did, now public and
+  importable directly (`duckpipe.dag`), not just reachable by shelling
+  out to the CLI. Surfaced by dogfooding DuckPipe into a real external
+  project: a notebook wanting to embed a pipeline diagram had no way to
+  get that string without a subprocess call.
+
+### Changed
+
+- `cli.py`'s `show` command now calls these public functions instead of
+  private duplicates — no behavior change, same output.
+
+### Fixed
+
+- `duckdb` was imported at module level in `state.py`, so merely
+  `import duckpipe` — even just for `Task`/`build_dag`/`to_mermaid`,
+  never touching a state file — pulled in DuckDB's compiled extension
+  regardless. Deferred into `StateStore._open_local`/`_attach_ducklake`,
+  the only two places that actually call `duckdb.connect()`; nothing
+  else in the import chain needs it (type hints stay safe under
+  `from __future__ import annotations` + `TYPE_CHECKING`). Measured
+  directly, same dogfooding project: **-24.3MB → -5.5MB** RSS overhead
+  from `import duckpipe` alone on top of an already-loaded engine (a
+  ~77% cut) — confirmed against a real benchmark run, not just in
+  isolation: every non-DuckDB engine's peak RSS dropped back to within
+  noise of a DuckPipe-free baseline, with zero timing or correctness
+  change (identical cross-engine verification, identical OOM outcomes).
+
 ## [0.1.0] - 2026-08-27
 
 First tagged release. Pre-1.0 — see [README.md](README.md) §Status for
@@ -39,4 +71,5 @@ what's explicitly *not* built yet.
   data, one per facet of the above.
 - Docs site on GitHub Pages, including a live in-browser playground.
 
+[0.2.0]: https://github.com/woozyking/duckpipe/releases/tag/v0.2.0
 [0.1.0]: https://github.com/woozyking/duckpipe/releases/tag/v0.1.0

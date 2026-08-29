@@ -590,7 +590,7 @@ wheels = [
 
 [[package]]
 name = "duckpipe"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "duckdb" },
@@ -668,7 +668,7 @@ dev = [
 
 [[package]]
 name = "duckpipe-tuning"
-version = "0.2.0"
+version = "0.1.0"
 source = { editable = "packages/duckpipe-tuning" }
 dependencies = [
     { name = "psutil" },

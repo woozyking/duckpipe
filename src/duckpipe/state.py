@@ -42,9 +42,16 @@ import pickle
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import duckdb
+# Lazy import (see _open_local/_attach_ducklake below), same spirit as the
+# pyarrow one further down: `duckdb` is a real dependency of duckpipe, but
+# importing it costs real, measurable RSS -- confirmed directly (~24MB) by
+# dogfooding `Task`/`build_dag` into a memory-benchmarking project that
+# never touches a state file at all. `Task`/`task`/`build_dag`/`to_mermaid`
+# have no need for it; only actually opening a StateStore does.
+if TYPE_CHECKING:
+    import duckdb
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS pipeline_runs (
@@ -262,6 +269,8 @@ class StateStore:
 
     @staticmethod
     def _open_local(path: Path, *, read_only: bool) -> duckdb.DuckDBPyConnection:
+        import duckdb
+
         if not read_only:
             path.parent.mkdir(parents=True, exist_ok=True)
         return duckdb.connect(str(path), read_only=read_only)
@@ -270,6 +279,8 @@ class StateStore:
     def _attach_ducklake(
         catalog: str, data_path: str | None, *, read_only: bool
     ) -> duckdb.DuckDBPyConnection:
+        import duckdb
+
         con = duckdb.connect()
         con.execute("INSTALL ducklake")  # needs network on a cold extension cache
         _install_catalog_extension(con, catalog)
