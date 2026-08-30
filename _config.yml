@@ -48,11 +48,17 @@ exclude:
 
 # Jekyll silently drops any file/directory starting with an underscore
 # by default (the same rule that hides _config.yml, _layouts/, etc.) --
-# without this, examples/08_browser_wasm/duckpipe_src/duckpipe/__init__.py
-# (written by prepare_bundle.py at build time, see pages.yml) never
-# makes it into the published site, so `import duckpipe` 404s in the
-# browser and evaluates GitHub's 404 page HTML as Python. Verified
-# empirically that this match is by bare filename, not a path glob --
-# "**/__init__.py"/"*/__init__.py" do NOT work here, only the bare name.
+# without this, files the WASM bundle needs
+# (examples/08_browser_wasm/duckpipe_src/duckpipe/, written by
+# prepare_bundle.py at build time, see pages.yml) never make it into
+# the published site, so `import duckpipe` 404s in the browser and
+# evaluates GitHub's 404 page HTML as Python. Bit each other twice now:
+# first __init__.py, then a second, real regression when _memcap.py/
+# _memcap_worker.py (new source modules, unrelated to Pages) got
+# silently dropped the same way on a later release. `"_*.py"` covers
+# any underscore-prefixed module by pattern, including ones added after
+# this comment was written -- verified empirically this match is by
+# bare filename, not a path glob ("**/_*.py"/"*/_*.py" do NOT work
+# here, only the bare name).
 include:
-  - "__init__.py"
+  - "_*.py"
