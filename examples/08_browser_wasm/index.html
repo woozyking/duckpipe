@@ -15,25 +15,32 @@
   }
   * { box-sizing: border-box; }
   body {
-    margin: 0; padding: 2rem 1.25rem 4rem; background: var(--bg); color: var(--fg);
-    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    margin: 0; padding: 1.25rem 1.25rem 1.5rem; background: var(--bg); color: var(--fg);
+    font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   }
-  main { max-width: 760px; margin: 0 auto; }
-  h1 { font-size: 1.6rem; margin: 0 0 .25rem; }
-  .tagline { color: var(--accent); font-weight: 600; margin: 0 0 1.5rem; }
+  main { max-width: 1280px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin: 0 0 .2rem; }
+  .tagline { color: var(--accent); font-weight: 600; margin: 0 0 .6rem; }
   .badge {
     display: inline-block; font-size: .75rem; font-weight: 600; letter-spacing: .02em;
     background: var(--accent); color: #fff; padding: .2rem .55rem; border-radius: 999px;
-    margin-bottom: 1rem;
+    margin-bottom: .6rem;
   }
-  p { margin: .6rem 0; }
-  section {
+  p { margin: .5rem 0; }
+  .row { display: grid; gap: .8rem; margin: .8rem 0; align-items: start; }
+  .row-3 { grid-template-columns: repeat(3, 1fr); }
+  .row-verdict { grid-template-columns: 1fr 1.3fr 1fr; }
+  .row-2 { grid-template-columns: 1fr 1fr; }
+  @media (max-width: 900px) {
+    .row-3, .row-verdict, .row-2 { grid-template-columns: 1fr; }
+  }
+  section, .row > div {
     background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
-    padding: 1.1rem 1.25rem; margin: 1.1rem 0;
+    padding: .9rem 1.1rem; margin: 0;
   }
-  section h2 { font-size: 1rem; margin: 0 0 .6rem; }
-  label { display: block; margin: .35rem 0; cursor: pointer; }
-  input[type=file] { margin: .4rem 0 .2rem .35rem; }
+  section h2, .row > div h2 { font-size: .95rem; margin: 0 0 .5rem; }
+  label { display: block; margin: .3rem 0; cursor: pointer; font-size: .9rem; }
+  input[type=file] { margin: .3rem 0 .2rem .35rem; }
   button {
     font: inherit; font-weight: 600; padding: .5rem 1rem; border-radius: 7px;
     border: 1px solid var(--accent); background: var(--accent); color: #fff;
@@ -42,16 +49,19 @@
   button:disabled { opacity: .45; cursor: not-allowed; }
   button.secondary { background: transparent; color: var(--accent); }
   #log {
-    font-family: var(--mono); font-size: .8rem; white-space: pre-wrap;
-    max-height: 9rem; overflow-y: auto; margin: 0; color: #888;
+    font-family: var(--mono); font-size: .72rem; white-space: pre-wrap;
+    max-height: 6rem; overflow-y: auto; margin: 0; color: #888;
   }
-  table { width: 100%; border-collapse: collapse; font-size: .85rem; margin-top: .5rem; }
-  th, td { text-align: left; padding: .3rem .5rem; border-bottom: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; font-size: .8rem; margin-top: .4rem; }
+  th, td { text-align: left; padding: .25rem .4rem; border-bottom: 1px solid var(--border); }
   .status-success { color: #2f9e44; font-weight: 600; }
   .status-skipped { color: #d9a400; font-weight: 600; }
   .status-failed { color: #d64545; font-weight: 600; }
-  pre.json { font-family: var(--mono); font-size: .8rem; overflow-x: auto; background: transparent; margin: .5rem 0 0; }
-  footer { font-size: .8rem; color: #888; margin-top: 2rem; }
+  pre.json {
+    font-family: var(--mono); font-size: .75rem; overflow: auto; background: transparent;
+    margin: .4rem 0 0; max-height: 14rem;
+  }
+  footer { font-size: .75rem; color: #888; margin-top: 1rem; }
   a { color: var(--accent); }
   .verdict {
     font-weight: 700; padding: .7rem .9rem; border-radius: 8px; margin: 0 0 .8rem;
@@ -72,75 +82,72 @@
   <p class="tagline">Checked entirely in this tab. No install, no server, no upload &mdash;
     not even to find out whether it's sensitive.</p>
 
-  <p>Checking whether an export is safe to hand off is itself a
-  chicken-and-egg problem for anyone under an NDA, a legal hold, or a
-  compliance policy: the usual way to check is to run it through some
-  tool, and "uploaded it to a checker" can be exactly the violation
-  you were trying to avoid. This page can't have that problem &mdash;
-  it never makes a network request for your file, and you can watch
-  the runtime log below to see that for yourself.</p>
+  <p class="intro">Checking whether an export is safe to hand off is its own
+  chicken-and-egg problem under an NDA or a compliance policy: the usual way
+  to check is to upload it somewhere first. This page never does &mdash; a real
+  DuckDB engine and DuckPipe's own unmodified source
+  (<a href="pipeline.py">pipeline.py</a> runs the same <code>duckpipe.run(...)</code>
+  the CLI does) run entirely inside a WebAssembly sandbox, with zero network
+  requests for your file. Watch the log below to see that for yourself.</p>
 
-  <p>What's actually running: a real DuckDB engine and DuckPipe's own,
-  completely unmodified source
-  (<code>task.py</code>/<code>dag.py</code>/<code>fingerprint.py</code>/<code>state.py</code>/<code>scheduler.py</code>)
-  loaded into a WebAssembly sandbox via
-  <a href="https://pyodide.org" target="_blank" rel="noopener">Pyodide</a>,
-  running the exact same <code>duckpipe.run(...)</code> call the CLI
-  uses. The pipeline (<a href="pipeline.py">pipeline.py</a>, open it)
-  scans whatever tabular file you give it for columns that look like
-  emails, phone numbers, SSNs, credit cards, or IP addresses &mdash;
-  pattern- and naming-heuristic checks, not a claim of exhaustive PII
-  detection &mdash; and caches each task's result, fingerprinted the same
-  way as every other DuckPipe run. Reload this page and run again with
-  the same file, and every task reports <code>skipped</code>.</p>
+  <div class="row row-3">
+    <section>
+      <h2>1 &middot; runtime</h2>
+      <pre id="log">starting…</pre>
+    </section>
 
-  <section>
-    <h2>1 &middot; runtime</h2>
-    <pre id="log">starting…</pre>
-  </section>
+    <section>
+      <h2>2 &middot; data source</h2>
+      <label><input type="radio" name="src" id="src-sample" checked> Bundled sample</label>
+      <label><input type="radio" name="src" id="src-upload"> Your own file
+        <input type="file" id="file-input" accept=".csv,.parquet" disabled></label>
+    </section>
 
-  <section>
-    <h2>2 &middot; data source</h2>
-    <label><input type="radio" name="src" id="src-sample" checked> Bundled sample &mdash; a
-      fabricated support-ticket export (fake names, <code>@example.com</code>
-      addresses, reserved-fictional phone/SSN ranges) with a few sensitive-looking
-      columns on purpose</label>
-    <label><input type="radio" name="src" id="src-upload"> Your own file
-      <input type="file" id="file-input" accept=".csv,.parquet" disabled></label>
-  </section>
-
-  <section>
-    <h2>3 &middot; run</h2>
-    <button type="button" id="run-btn" disabled>scan for sensitive columns</button>
-    <button type="button" id="clear-btn" class="secondary" disabled>clear browser storage</button>
-  </section>
+    <section>
+      <h2>3 &middot; run</h2>
+      <button type="button" id="run-btn" disabled>scan for sensitive columns</button>
+      <button type="button" id="clear-btn" class="secondary" disabled>clear storage</button>
+    </section>
+  </div>
 
   <section id="results" hidden>
-    <h2>verdict</h2>
-    <div id="verdict-banner" class="verdict"></div>
-    <div id="confirmed-list" class="col-list"></div>
-    <div id="worth-a-look-list" class="col-list"></div>
+    <div class="row row-verdict">
+      <div>
+        <h2>verdict</h2>
+        <div id="verdict-banner" class="verdict"></div>
+        <div id="confirmed-list" class="col-list"></div>
+        <div id="worth-a-look-list" class="col-list"></div>
+      </div>
+      <div>
+        <h2>pipeline DAG</h2>
+        <div id="dag-diagram"></div>
+      </div>
+      <div>
+        <h2>task run</h2>
+        <table id="status-table"><tbody></tbody></table>
+      </div>
+    </div>
 
-    <h2 style="margin-top:1rem">pipeline DAG <span style="font-weight:400;color:#888">(the same view <code>duckpipe show --mermaid</code> prints from a terminal, colored by this run's actual statuses)</span></h2>
-    <div id="dag-diagram"></div>
-
-    <h2 style="margin-top:1rem">task run</h2>
-    <table id="status-table"><tbody></tbody></table>
-
-    <h2 style="margin-top:1rem">full detail</h2>
-    <pre class="json" id="report-json"></pre>
-
-    <h2 style="margin-top:1rem">run history <span style="font-weight:400;color:#888">(straight from <code>pipeline_runs</code> in the state file &mdash; no separate UI)</span></h2>
-    <table id="history-table"><thead><tr><th>run</th><th>started</th><th>status</th></tr></thead><tbody></tbody></table>
+    <div class="row row-2">
+      <div>
+        <h2>full detail</h2>
+        <pre class="json" id="report-json"></pre>
+      </div>
+      <div>
+        <h2>run history</h2>
+        <table id="history-table"><thead><tr><th>run</th><th>started</th><th>status</th></tr></thead><tbody></tbody></table>
+      </div>
+    </div>
   </section>
 
   <footer>
-    <a href="https://pyodide.org/en/stable/usage/api/js-api.html" target="_blank" rel="noopener">Pyodide</a> +
-    <a href="https://duckdb.org" target="_blank" rel="noopener">DuckDB</a>, coordinated by WASM JSPI (stack switching) so
-    <code>asyncio.run()</code> inside the scheduler works unmodified. State
-    persists across reloads via IndexedDB. See
-    <a href="README.md">README.md</a> for how to serve this locally and
-    <a href="../../DESIGN.md">DESIGN.md</a> &sect;8 for the honest limitations.
+    Running DuckPipe's own unmodified source
+    (<code>task.py</code>/<code>dag.py</code>/<code>fingerprint.py</code>/<code>state.py</code>/<code>scheduler.py</code>)
+    via <a href="https://pyodide.org" target="_blank" rel="noopener">Pyodide</a> +
+    <a href="https://duckdb.org" target="_blank" rel="noopener">DuckDB</a>, coordinated by
+    WASM JSPI so <code>asyncio.run()</code> works unmodified. State persists across
+    reloads via IndexedDB. See <a href="README.md">README.md</a> to serve this locally
+    and <a href="../../DESIGN.md">DESIGN.md</a> &sect;8 for the honest limitations.
   </footer>
 </main>
 

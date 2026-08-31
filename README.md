@@ -68,14 +68,19 @@ Most teams reach for Airflow/Prefect/Dagster the moment they need "more
 than one script that depends on another script," which means standing up
 a scheduler, a metadata database, and usually a broker before running a
 single real pipeline — fixed infrastructure tax whether your DAG moves a
-thousand rows once a day or a billion rows every minute. Most pipeline
-DAGs are a handful of dependent steps over data that fits on one
-machine. DuckPipe is the orchestrator for *that* case: a library, not a
-platform — though never at odds with a central metadata store either:
-if you already run one and want several DuckPipe deployments sharing a
-catalog, that's an opt-in upgrade away, not a different architecture
-(see [DuckLake observability upgrade](docs/ducklake.md)). See
-[`DESIGN.md`](DESIGN.md) for the full design rationale and
+thousand rows once a day or a billion rows every minute. DuckPipe removes
+that tax while matching the task-organization ergonomics it was buying —
+nested pipelines included (`examples/09_nested_pipeline`) — without
+requiring your own tasks to use DuckDB at all: it's the orchestrator's
+own state store, not a requirement placed on your code (`DESIGN.md` §2).
+A hosted UI, SLA alerting, and massive fan-out genuinely don't belong in
+the core — but that's solved by composition (a plain SQL query, or
+embedding inside a heavier orchestrator's own fan-out), not left unsolved
+(`DESIGN.md` §3, §9). Never at odds with a central metadata store
+either: if you already run one and want several DuckPipe deployments
+sharing a catalog, that's an opt-in upgrade away, not a different
+architecture (see [DuckLake observability upgrade](docs/ducklake.md)).
+See [`DESIGN.md`](DESIGN.md) for the full design rationale and
 prior-art landscape check.
 
 ## Install
