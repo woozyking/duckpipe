@@ -22,6 +22,9 @@ Then from a shell: ``duckpipe run pipeline.py``.
 
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _version
+
 from duckpipe.dag import DAG, CycleError, build_dag, to_json, to_mermaid
 from duckpipe.remote import StateLockedError
 from duckpipe.scheduler import RunSummary, run
@@ -40,4 +43,18 @@ __all__ = [
     "StateLockedError",
 ]
 
-__version__ = "0.3.0"
+# Read from the installed package's own metadata rather than duplicating
+# pyproject.toml's version as a second literal -- a hardcoded string here
+# already drifted out of sync with a real release once (0.4.0 published
+# to PyPI while this file still said "0.3.0"), and a single source of
+# truth is what actually fixes that, not remembering to update two
+# places every time. Falls back when there's genuinely no installed
+# package to ask -- confirmed the hard way: examples/08_browser_wasm
+# copies this file's own raw source straight into a Pyodide sandbox
+# (prepare_bundle.py, DESIGN.md sec 8) with no wheel/dist-info at all,
+# and `import duckpipe` failing outright there is worse than an
+# admittedly-unhelpful version string.
+try:
+    __version__ = _version("duckpipe")
+except PackageNotFoundError:
+    __version__ = "0.0.0+unknown"

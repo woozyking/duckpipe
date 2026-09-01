@@ -142,6 +142,7 @@ what's explicitly *not* built yet.
   data, one per facet of the above.
 - Docs site on GitHub Pages, including a live in-browser playground.
 
+[0.4.0]: https://github.com/woozyking/duckpipe/releases/tag/v0.4.0
 [0.3.0]: https://github.com/woozyking/duckpipe/releases/tag/v0.3.0
 [0.2.0]: https://github.com/woozyking/duckpipe/releases/tag/v0.2.0
 [0.1.0]: https://github.com/woozyking/duckpipe/releases/tag/v0.1.0
