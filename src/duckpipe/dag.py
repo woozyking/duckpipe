@@ -193,9 +193,17 @@ def _mermaid_node_id(name: str) -> str:
     return "t_" + re.sub(r"[^A-Za-z0-9_]", "_", name)
 
 
-# A subgraph's own sub-order, and (optionally) that sub-pipeline's own
-# last_status dict -- see to_mermaid's `subgraphs` param.
-_Subgraph = tuple[list[Task], "dict[str, tuple[str, str]] | None"]
+# A subgraph's own sub-order, (optionally) that sub-pipeline's own
+# last_status dict, and (optionally) that sub-pipeline's own subgraphs --
+# see to_mermaid's `subgraphs` param. The third element is genuinely
+# optional (existing 2-element callers keep working unchanged) and,
+# recursively, exactly the same shape as the outer `subgraphs` dict --
+# nesting depth was never hardcoded anywhere except _mermaid_body's own
+# recursive call below, so letting it recurse is the whole fix.
+_Subgraph = (
+    "tuple[list[Task], dict[str, tuple[str, str]] | None] "
+    "| tuple[list[Task], dict[str, tuple[str, str]] | None, dict[str, '_Subgraph'] | None]"
+)
 
 
 def _mermaid_body(
@@ -220,10 +228,12 @@ def _mermaid_body(
     for t in order:
         label = t.name.replace('"', "&quot;")
         if t.name in subgraphs:
-            sub_order, sub_status = subgraphs[t.name]
+            sub = subgraphs[t.name]
+            sub_order, sub_status = sub[0], sub[1]
+            sub_subgraphs = sub[2] if len(sub) > 2 else None
             lines.append(f'    subgraph {nid(t.name)} ["{label}"]')
             sub_lines, sub_used = _mermaid_body(
-                sub_order, sub_status or {}, {}, prefix=f"{nid(t.name)}__"
+                sub_order, sub_status or {}, sub_subgraphs or {}, prefix=f"{nid(t.name)}__"
             )
             lines.extend(f"    {line}" for line in sub_lines)
             lines.append("    end")
@@ -275,6 +285,12 @@ def to_mermaid(
     ``(that sub-pipeline's topological order, its own last_status or
     None)`` -- only the pipeline author knows this relationship, so it's
     stated explicitly rather than guessed at from a task's code.
+
+    This nests to any depth: a third, optional tuple element,
+    ``(order, last_status, subgraphs)``, is that sub-pipeline's own
+    ``subgraphs`` argument, recursively -- for a task three (or more)
+    pipelines deep, whose own body nests one further. Nothing needs to
+    opt into this; it's the same argument shape at every level.
     """
     lines, used_classes = _mermaid_body(order, last_status or {}, subgraphs or {}, prefix="")
     result = ["flowchart TD", *lines]

@@ -7,6 +7,45 @@ versioning/compatibility promise itself is still an open decision
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-31
+
+### Added
+
+- `to_mermaid(..., subgraphs=...)` now recurses to any depth: a
+  `subgraphs` entry's tuple takes an optional third element, that
+  sub-pipeline's own `subgraphs` argument, for a pipeline nested inside
+  a pipeline nested inside a pipeline (or deeper). No new concept — the
+  same argument shape, one level further in. `examples/09_nested_pipeline`
+  now demonstrates three genuine nesting levels rather than two.
+- `examples/10_orchestrator_pools` — bridges DuckPipe's single, global
+  `max_workers` into a host orchestrator's own named concurrency control
+  (Airflow pools, Prefect tagged concurrency limits) using `only=`,
+  instead of growing a resource-group concept of DuckPipe's own. See
+  `docs/interop.md`.
+
+### Fixed
+
+- `examples/09_nested_pipeline`'s `report_card`/`report_cash` hand their
+  payment type to their own nested call via a process-wide environment
+  variable; running them concurrently (DuckPipe's default for
+  independent tasks) could race on it. `max_workers=1` on the outer run
+  is the fix, not a cheap default — an earlier version of this example's
+  own README said otherwise, based on a real but incomplete test.
+- A concurrency slot could be won by a task that was only waiting on its
+  own upstream, not actually doing anything — starving unrelated,
+  ready-to-run tasks out of a slot they could otherwise be using.
+  Confirmed directly: a 4-task DAG ran 64% slower under `max_workers=2`
+  than fully unbounded, because a downstream task consistently won a
+  slot ahead of independent ones and idled in it. Fixed by checking
+  dependencies before acquiring a slot, not after.
+- `max_workers=None` ("unbounded") was secretly capped by Python's own
+  default `ThreadPoolExecutor` size (`min(32, cpu_count + 4)`) — a wide
+  fan-out (§4's own documented pattern) queued behind that cap
+  regardless of the DAG's own shape. Confirmed directly: 50 independent
+  0.5s tasks took 2.84s instead of ~0.5s. Fixed with an explicit
+  executor sized to the DAG's own task count when unbounded, or to
+  `max_workers` when bounded.
+
 ## [0.3.0] - 2026-08-29
 
 ### Added

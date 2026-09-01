@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from duckpipe.scheduler import run
@@ -146,3 +147,68 @@ def test_run_against_a_pipeline_with_tasks_split_across_sibling_files(tmp_path):
     summary = run(FIXTURES / "multi_module_pkg" / "pipeline.py", db_path=tmp_path / "state.duckdb")
     assert summary.success
     assert summary.results == {"extract": [1, 2, 3], "transform": [10, 20, 30]}
+
+
+def test_bounded_concurrency_does_not_starve_an_independent_task_behind_a_blocked_dependent(
+    tmp_path, monkeypatch
+):
+    """A concurrency slot must be earned by being ready to run, not by
+    merely existing in the DAG. Before the fix, `combine` (which depends
+    on `slow_root`) could win a slot immediately -- thanks to the
+    alphabetical topological tie-break putting it right after its own
+    dependency -- and then idle in that slot for slow_root's whole
+    duration, leaving `zzz_independent` (unrelated, ready immediately)
+    with no slot to run in until slow_root finished. Fixed, both start
+    together regardless of `max_workers`."""
+    timing_file = tmp_path / "timings.json"
+    monkeypatch.setenv("DUCKPIPE_TEST_TIMING_FILE", str(timing_file))
+
+    summary = run(FIXTURES / "starvation_dag.py", db_path=tmp_path / "state.duckdb", max_workers=2)
+
+    assert summary.success
+    times = json.loads(timing_file.read_text())
+    assert abs(times["zzz_independent"] - times["slow_root"]) < 0.3, times
+
+
+def test_unbounded_run_sizes_its_executor_to_the_dags_own_task_count(tmp_path, monkeypatch):
+    """`max_workers=None` means unbounded -- but `loop.run_in_executor(None, ...)`
+    would use Python's own default `ThreadPoolExecutor`
+    (`min(32, cpu_count + 4)`) instead, silently capping a wide fan-out
+    (DESIGN.md sec 4's own documented pattern) well below what the DAG's
+    shape could actually support. Pins the fix: an explicit executor
+    sized to the DAG's own task count, not the implicit default."""
+    import duckpipe.scheduler as scheduler_module
+
+    seen_sizes = []
+    real_executor = scheduler_module.ThreadPoolExecutor
+
+    class RecordingExecutor(real_executor):
+        def __init__(self, *args, max_workers=None, **kwargs):
+            seen_sizes.append(max_workers)
+            super().__init__(*args, max_workers=max_workers, **kwargs)
+
+    monkeypatch.setattr(scheduler_module, "ThreadPoolExecutor", RecordingExecutor)
+
+    summary = run(FIXTURES / "fanout_dag.py", db_path=tmp_path / "state.duckdb", max_workers=None)
+
+    assert summary.success
+    assert seen_sizes == [5]  # source, partition_0/1/2, combine -- fanout_dag.py's own shape
+
+
+def test_bounded_run_sizes_its_executor_to_max_workers(tmp_path, monkeypatch):
+    import duckpipe.scheduler as scheduler_module
+
+    seen_sizes = []
+    real_executor = scheduler_module.ThreadPoolExecutor
+
+    class RecordingExecutor(real_executor):
+        def __init__(self, *args, max_workers=None, **kwargs):
+            seen_sizes.append(max_workers)
+            super().__init__(*args, max_workers=max_workers, **kwargs)
+
+    monkeypatch.setattr(scheduler_module, "ThreadPoolExecutor", RecordingExecutor)
+
+    summary = run(FIXTURES / "fanout_dag.py", db_path=tmp_path / "state.duckdb", max_workers=2)
+
+    assert summary.success
+    assert seen_sizes == [2]

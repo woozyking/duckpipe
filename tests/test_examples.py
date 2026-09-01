@@ -109,6 +109,28 @@ def test_distributed_cluster_example(tmp_path):
             scratch.unlink()
 
 
+def test_orchestrator_pools_example():
+    example = EXAMPLES / "10_orchestrator_pools"
+    bucket = example / "pools_bucket"
+    try:
+        result = subprocess.run(
+            ["uv", "run", "python", "run_with_pools.py"],
+            cwd=example,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "publish_a / publish_b overlapped: False" in result.stdout
+        assert (bucket / "duckpipe.db").exists()
+    finally:
+        shutil.rmtree(bucket, ignore_errors=True)
+        for scratch in example.glob("_scratch_*.duckdb"):
+            scratch.unlink()
+        for scratch in example.glob("_scratch_*.duckdb.wal"):
+            scratch.unlink()
+
+
 def test_distributed_with_ducklake_example(tmp_path):
     example = EXAMPLES / "05_distributed_with_ducklake"
     try:
@@ -195,13 +217,29 @@ def test_nested_pipeline_example(tmp_path):
     outer_db = example / "duckpipe.db"
     card_db = example / "report_card.duckdb"
     cash_db = example / "report_cash.duckdb"
+    # report_pipeline.py's own `summarize` task nests summary_pipeline.py,
+    # keyed by DUCKPIPE_EXAMPLE_PAYMENT_TYPE (1/2 for card/cash, unset ->
+    # "all" for a standalone run with no payment-type filter).
+    summary_card_db = example / "summary_1.duckdb"
+    summary_cash_db = example / "summary_2.duckdb"
+    summary_all_db = example / "summary_all.duckdb"
     try:
+        # --max-workers 1 is load-bearing, not a cheap default: report_card/
+        # report_cash hand their payment type to their own nested call via
+        # a process-wide env var, and running them concurrently races on
+        # it (see this example's own README, "found the hard way").
         first = run(example / "pipeline.py", db_path=outer_db, max_workers=1)
         assert first.success
-        assert first.results["combine"]["card"]  # non-empty daily rows
-        assert first.results["combine"]["cash"]
+        assert first.results["combine"]["card"]["daily"]  # non-empty daily rows
+        assert first.results["combine"]["cash"]["daily"]
+        # The third, innermost nesting level's own result, surfaced all
+        # the way up through report_pipeline.py's `summarize` task.
+        assert first.results["combine"]["card"]["summary"]["total_trips"] > 0
+        assert first.results["combine"]["cash"]["summary"]["total_trips"] > 0
         assert card_db.exists()
         assert cash_db.exists()
+        assert summary_card_db.exists()
+        assert summary_cash_db.exists()
 
         second = run(example / "pipeline.py", db_path=outer_db, max_workers=1)
         assert second.success
@@ -214,8 +252,10 @@ def test_nested_pipeline_example(tmp_path):
         standalone = run(example / "report_pipeline.py", db_path=standalone_db)
         assert standalone.success
         assert standalone.results["aggregate"]
+        assert standalone.results["summarize"]["total_trips"] > 0
 
-        # show_nested_mermaid.py: the concrete `subgraphs=` demonstration.
+        # show_nested_mermaid.py: the concrete, now-recursive `subgraphs=`
+        # demonstration -- three real levels, not just one.
         result = subprocess.run(
             ["uv", "run", "python", "show_nested_mermaid.py"],
             cwd=example,
@@ -226,9 +266,11 @@ def test_nested_pipeline_example(tmp_path):
         assert result.returncode == 0, result.stdout + result.stderr
         assert 'subgraph t_report_card ["report_card"]' in result.stdout
         assert 'subgraph t_report_cash ["report_cash"]' in result.stdout
+        assert 'subgraph t_report_card__t_summarize ["summarize"]' in result.stdout
+        assert "t_report_card__t_summarize__t_totals" in result.stdout
         assert "class t_report_card skipped" in result.stdout
     finally:
-        for db in (outer_db, card_db, cash_db):
+        for db in (outer_db, card_db, cash_db, summary_card_db, summary_cash_db, summary_all_db):
             db.unlink(missing_ok=True)
             Path(str(db) + ".wal").unlink(missing_ok=True)
 

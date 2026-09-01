@@ -63,3 +63,7 @@ for the DuckLake-backed alternative.
   executor; nothing more to build.
 - [`remote_execution.md`](remote_execution.md) — for one big task rather
   than many independent ones, a bigger remote machine needs none of this.
+- [`interop.md`](interop.md#bridging-concurrency-control-not-duplicating-it) —
+  using this same `only=` primitive to let a host orchestrator's own
+  named concurrency control (Airflow pools, Prefect tagged limits) cover
+  what DuckPipe's single, global `max_workers` deliberately doesn't.

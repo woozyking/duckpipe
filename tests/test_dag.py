@@ -132,3 +132,34 @@ def test_to_mermaid_nested_subgraph_colors_inner_tasks_by_their_own_status():
     assert "class t_suite_02 success" in diagram
     # classDef is emitted exactly once even though both levels used it.
     assert diagram.count("classDef success") == 1
+
+
+def test_to_mermaid_supports_recursive_subgraphs_to_any_depth():
+    """A subgraph's own tuple takes an optional third element: its own
+    `subgraphs` dict, the same shape one level deeper. Recursion isn't a
+    separate mechanism -- it's this same argument, nested."""
+    outer_order = build_dag(FIXTURES / "nesting_outer_dag.py").topological_order()
+    middle_order = build_dag(FIXTURES / "toy_dag.py").topological_order()
+    innermost_order = build_dag(FIXTURES / "toy_dag.py").topological_order()
+
+    diagram = to_mermaid(
+        outer_order,
+        subgraphs={
+            "suite_02": (middle_order, None, {"transform_a": (innermost_order, None)}),
+        },
+    )
+
+    # Three real nesting levels: outer -> suite_02 -> transform_a -> extract.
+    assert 'subgraph t_suite_02 ["suite_02"]' in diagram
+    assert 'subgraph t_suite_02__t_transform_a ["transform_a"]' in diagram
+    assert "t_suite_02__t_transform_a__t_extract" in diagram
+    assert (
+        "t_suite_02__t_transform_a__t_extract --> t_suite_02__t_transform_a__t_transform_a"
+        in diagram
+    )
+    # A sibling at the middle level with no further nesting stays a plain node.
+    assert 't_suite_02__t_extract["extract"]' in diagram
+    # The existing 2-element shape still works unchanged alongside the new one.
+    diagram_2tuple = to_mermaid(outer_order, subgraphs={"suite_02": (middle_order, None)})
+    assert 'subgraph t_suite_02 ["suite_02"]' in diagram_2tuple
+    assert "subgraph" not in diagram_2tuple.replace('subgraph t_suite_02 ["suite_02"]', "", 1)

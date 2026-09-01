@@ -203,7 +203,11 @@ another pipeline (nesting `duckpipe.run(...)` inside a task is safe —
 see [`DESIGN.md`](DESIGN.md) §11), pass that sub-pipeline's own
 topological order to render it as a real nested subgraph instead of a
 plain node — DuckPipe can't discover that relationship on its own, so
-this is how you state it.
+this is how you state it. Nests to any depth: give an entry its own
+`subgraphs=` (a third, optional tuple element) for a sub-pipeline that
+itself nests a further one — see
+[`examples/09_nested_pipeline`](examples/09_nested_pipeline) for three
+real levels, rendered and running.
 
 The state file's own views (`v_latest_task_status`, `v_run_summary`,
 `v_task_stats`) are plain SQL and queryable from any DuckDB client, not

@@ -26,5 +26,6 @@ examples/05_distributed_with_ducklake/data/
 examples/**/*.ducklake.sqlite
 examples/**/*.ducklake.sqlite.data/
 examples/07_serverless_executor/serverless_bucket/
+examples/10_orchestrator_pools/pools_bucket/
 examples/08_browser_wasm/duckpipe_src/
 examples/08_browser_wasm/sample_data/

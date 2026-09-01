@@ -24,6 +24,7 @@ that materializes on purpose, and is explicit about exactly why.
 | [`07_serverless_executor`](07_serverless_executor/) | `extract → summarize` | The same distributed run from 04, with its two tasks dispatched through two genuinely different invocation shapes — a container and a `handler(event, context)` function — proving the "not locked to one platform" claim instead of asserting it |
 | [`08_browser_wasm`](08_browser_wasm/) | `profile → scan_sensitive_columns → triage_report` | "Is this file safe to send anywhere?" — checking an export for sensitive-looking columns without uploading it to find out, running DuckPipe's own unmodified source entirely inside a browser tab via Pyodide |
 | [`09_nested_pipeline`](09_nested_pipeline/) | `{report_card, report_cash} → combine`, each nesting its own 3-task `extract → clean → aggregate` | A task's body running another whole pipeline via `duckpipe.run()` (confirmed safe) — and `to_mermaid`'s `subgraphs=` making that nesting visible instead of two opaque nodes |
+| [`10_orchestrator_pools`](10_orchestrator_pools/) | `extract → {fast_a, fast_b, fast_c}`, `{fast_a, fast_b} → {publish_a, publish_b}` (rate-limited, shared pool) | `max_workers` is deliberately one global number — this bridges the "two tasks share a resource, forty others shouldn't wait on it" case into Airflow pools / Prefect tagged concurrency limits instead of growing a resource-group concept of DuckPipe's own |
 
 Run any of the first three (each `duck.py`/`pl.py` pair uses its own
 `--db` and output paths so the two variants never collide):
@@ -51,10 +52,16 @@ run the same way as 01-03 above, just with `--db
 `uv run python prepare_bundle.py` once, then serve the folder and open
 it in a browser; see its own README for why (and its honest limits).
 
-09 is `uv run duckpipe run examples/09_nested_pipeline/pipeline.py`, same
-as 01-03 above; its own README also shows `show_nested_mermaid.py`, the
+09 is `uv run duckpipe run examples/09_nested_pipeline/pipeline.py
+--max-workers 1` (the flag matters here specifically — see its own
+README); its own README also shows `show_nested_mermaid.py`, the
 `to_mermaid(..., subgraphs=...)` demonstration `duckpipe show --mermaid`
-alone can't give you.
+alone can't give you, recursive to any depth.
+
+10 is `uv run python examples/10_orchestrator_pools/run_with_pools.py` —
+its own coordinator script, the same shape as 04's, plus a named
+per-task concurrency pool layered on top; see its own README for the
+direct Airflow/Prefect translation.
 
 See `data/README.md` for how to point any of these at the full public
 dataset instead of the bundled sample, with zero code changes.

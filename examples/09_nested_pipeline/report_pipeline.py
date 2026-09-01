@@ -12,7 +12,12 @@ in this same directory:
 ...or nested inside another pipeline's own task (see ``pipeline.py`` in
 this same folder) -- nesting `duckpipe.run()` inside a task is safe
 (DESIGN.md sec 11), and this file never needs to know which is
-happening; it's a normal pipeline either way.
+happening; it's a normal pipeline either way. This pipeline's own last
+task, ``summarize``, does the same thing one level deeper: it nests
+``summary_pipeline.py``, making ``pipeline.py`` -> this file ->
+``summary_pipeline.py`` three real nesting levels, not just two --
+exactly what `to_mermaid`'s recursive `subgraphs=` (DESIGN.md sec 5)
+exists to render truthfully.
 
 ``DUCKPIPE_EXAMPLE_PAYMENT_TYPE`` mirrors ``DUCKPIPE_EXAMPLE_DATA``'s own
 env-var-override convention (examples/01_daily_batch_etl/duck.py):
@@ -33,6 +38,7 @@ assumed (see `pipeline.py`'s own `max_workers=1` note for the
 concurrency half of this).
 """
 
+import json
 import os
 from pathlib import Path
 
@@ -41,6 +47,7 @@ import duckdb
 from duckpipe import run, task
 
 HERE = Path(__file__).parent
+SUMMARY_PIPELINE = HERE / "summary_pipeline.py"
 DATA = os.environ.get(
     "DUCKPIPE_EXAMPLE_DATA", str(HERE.parent / "data" / "nyc_taxi_sample.parquet")
 )
@@ -74,6 +81,20 @@ def aggregate(daily=clean):
         {"trip_date": str(trip_date), "trip_count": trip_count, "total_revenue": total_revenue}
         for trip_date, trip_count, total_revenue in rel.fetchall()
     ]
+
+
+@task(cache=True)
+def summarize(daily=aggregate) -> dict:
+    """The third, innermost real nesting level: this task's own body
+    calls `duckpipe.run()` on ``summary_pipeline.py``, the same way
+    ``pipeline.py``'s tasks nest this file (see this module's own
+    docstring) -- nesting is safe at any depth for the same reason it's
+    safe once (DESIGN.md sec 11), and `to_mermaid`'s `subgraphs=`
+    recurses to match (DESIGN.md sec 5).
+    """
+    os.environ["DUCKPIPE_EXAMPLE_DAILY_JSON"] = json.dumps(daily)
+    summary = run(SUMMARY_PIPELINE, db_path=HERE / f"summary_{PAYMENT_TYPE or 'all'}.duckdb")
+    return summary.results["totals"]
 
 
 if __name__ == "__main__":

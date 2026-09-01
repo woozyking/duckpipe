@@ -1,6 +1,6 @@
 [project]
 name = "duckpipe"
-version = "0.3.0"
+version = "0.4.0"
 description = "A serverless-first, DuckDB-native pipeline orchestrator. No scheduler daemon, no central metadata database required, no broker — a run is a Python process that starts, does work, records what it did to a `.duckdb` file, and exits."
 readme = "README.md"
 license = "MIT"

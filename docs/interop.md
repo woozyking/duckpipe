@@ -102,6 +102,24 @@ concurrently against the *same* `state_uri`, the overlapping run raises
 Give each partition its own `state_uri` if they should genuinely run in
 parallel.
 
+## Bridging concurrency control, not duplicating it
+
+`max_workers` is deliberately one global number for the whole pipeline
+(DESIGN.md §12). That's the right default, but it has a real limit: a
+pipeline where two tasks share a rate-limited external resource and
+forty others don't has no correct single setting — `max_workers=1`
+serializes everyone, unbounded lets the two race the resource. Rather
+than growing a resource-group concept of DuckPipe's own (a real new
+concept `@task(pool=...)` would be, against DESIGN.md §5's "does this
+let us delete something instead" bar), bridge the need to where it's
+already solved: Airflow's pools and Prefect's tagged concurrency limits
+both let specific tasks share a named, capacity-limited slot,
+independent of the rest of the pipeline. `only=` is what makes each
+DuckPipe task dispatchable as its own atomic unit for either tool to
+assign a pool to — see
+[`../examples/10_orchestrator_pools`](../examples/10_orchestrator_pools/)
+for the worked example and the direct recipe for both.
+
 ## Where not to go
 
 No DuckPipe-side awareness of the host orchestrator: no provider
