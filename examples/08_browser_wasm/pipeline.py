@@ -71,12 +71,19 @@ def profile():
     return {"row_count": row_count, "columns": [(name, dtype) for name, dtype, *_ in columns]}
 
 
-@task(cache=True)
+@task
 def scan_sensitive_columns(info=profile):
     """Per string column: which value patterns a majority of its non-null
     values match, plus whether its own name hints at something sensitive.
     Every check is a real DuckDB query over the actual file -- nothing
-    here is guessed from column names alone."""
+    here is guessed from column names alone.
+
+    Deliberately not `cache=True`, unlike its siblings: this is the one
+    step worth re-running every time regardless of whether the file
+    changed, so a second run against the same file visibly shows both
+    outcomes at once -- `profile`/`triage_report` reporting `skipped`
+    (cached, unchanged) right next to this one reporting `success`
+    (it actually ran), rather than everything skipping uniformly."""
     string_cols = [name for name, dtype in info["columns"] if dtype.split("(")[0] == "VARCHAR"]
     con = duckdb.connect()
     findings: dict[str, dict] = {}

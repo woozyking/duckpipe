@@ -314,9 +314,12 @@ async def test_browser_wasm_example():
             confirmed = await page.eval_on_selector("#confirmed-list", "el => el.textContent")
             assert "email" in confirmed and "ssn" in confirmed, confirmed
 
-            # Reload -- a fresh Pyodide instance -- and run again: everything
-            # should skip, proving the state file genuinely persisted across
-            # the reload via IndexedDB, not just within one page's lifetime.
+            # Reload -- a fresh Pyodide instance -- and run again: profile/
+            # triage_report should skip, proving the state file genuinely
+            # persisted across the reload via IndexedDB, not just within one
+            # page's lifetime. scan_sensitive_columns is deliberately never
+            # cached (pipeline.py's own docstring on it), so it re-runs every
+            # time -- the contrast is the point, not a bug.
             await page.reload()
             await page.wait_for_function(
                 "!document.getElementById('run-btn').disabled", timeout=60000
@@ -328,9 +331,24 @@ async def test_browser_wasm_example():
             statuses_after_reload = await page.eval_on_selector(
                 "#status-table", "el => el.textContent"
             )
-            assert statuses_after_reload.count("skipped") == 3, statuses_after_reload
+            assert statuses_after_reload.count("skipped") == 2, statuses_after_reload
+            assert statuses_after_reload.count("success") == 1, statuses_after_reload
 
             await browser.close()
     finally:
         server.shutdown()
         thread.join(timeout=5)
+
+
+def test_sustainability_example(tmp_path):
+    # Exercises pipeline.py against the bundled sample only -- the real,
+    # 12-month headline numbers this example's README reports come from
+    # measure_and_quantify.py run by hand against a real DUCKPIPE_EXAMPLE_DATA
+    # (network, multi-second), not something CI should do on every run.
+    example = EXAMPLES / "11_sustainability"
+    summary = run(example / "pipeline.py", db_path=tmp_path / "duckpipe.db")
+    assert summary.success
+    report = summary.results["report"]
+    assert report["sources"] == 1
+    assert report["total_trips"] > 0
+    assert report["top_borough_by_revenue"] == "Manhattan"

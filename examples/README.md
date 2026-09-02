@@ -25,6 +25,7 @@ that materializes on purpose, and is explicit about exactly why.
 | [`08_browser_wasm`](08_browser_wasm/) | `profile → scan_sensitive_columns → triage_report` | "Is this file safe to send anywhere?" — checking an export for sensitive-looking columns without uploading it to find out, running DuckPipe's own unmodified source entirely inside a browser tab via Pyodide |
 | [`09_nested_pipeline`](09_nested_pipeline/) | `{report_card, report_cash} → combine`, each nesting its own 3-task `extract → clean → aggregate` | A task's body running another whole pipeline via `duckpipe.run()` (confirmed safe) — and `to_mermaid`'s `subgraphs=` making that nesting visible instead of two opaque nodes |
 | [`10_orchestrator_pools`](10_orchestrator_pools/) | `extract → {fast_a, fast_b, fast_c}`, `{fast_a, fast_b} → {publish_a, publish_b}` (rate-limited, shared pool) | `max_workers` is deliberately one global number — this bridges the "two tasks share a resource, forty others shouldn't wait on it" case into Airflow pools / Prefect tagged concurrency limits instead of growing a resource-group concept of DuckPipe's own |
+| [`11_sustainability`](11_sustainability/) | `extract → clean → join_boroughs → aggregate → report`, run through an identical `run_pipeline()` in both arms | Quantifying "no standing infrastructure" in real kWh/year and $/year, using sourced energy-per-vCPU figures and a real self-hosted Prefect setup instead of a vibe — the engine is held constant on purpose, so the whole delta is the eliminated standing orchestrator, not an engine-speed claim |
 
 Run any of the first three (each `duck.py`/`pl.py` pair uses its own
 `--db` and output paths so the two variants never collide):
@@ -62,6 +63,11 @@ alone can't give you, recursive to any depth.
 its own coordinator script, the same shape as 04's, plus a named
 per-task concurrency pool layered on top; see its own README for the
 direct Airflow/Prefect translation.
+
+11 is `uv run python examples/11_sustainability/measure_and_quantify.py`
+— quick against the bundled sample, or against a real full-year
+`DUCKPIPE_EXAMPLE_DATA` for the real, cited kWh/year numbers its own
+README reports.
 
 See `data/README.md` for how to point any of these at the full public
 dataset instead of the bundled sample, with zero code changes.

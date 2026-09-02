@@ -27,18 +27,18 @@
     margin-bottom: .6rem;
   }
   p { margin: .5rem 0; }
-  .row { display: grid; gap: .8rem; margin: .8rem 0; align-items: start; }
-  .row-3 { grid-template-columns: repeat(3, 1fr); }
-  .row-verdict { grid-template-columns: 1fr 1.3fr 1fr; }
-  .row-2 { grid-template-columns: 1fr 1fr; }
+  .row { display: grid; gap: .8rem; margin: .8rem 0; align-items: stretch; }
+  .row-3, .row-verdict { grid-template-columns: repeat(3, 1fr); }
+  .row-1 { grid-template-columns: 1fr; }
   @media (max-width: 900px) {
-    .row-3, .row-verdict, .row-2 { grid-template-columns: 1fr; }
+    .row-3, .row-verdict { grid-template-columns: 1fr; }
   }
   section, .row > div {
     background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
     padding: .9rem 1.1rem; margin: 0;
   }
   section h2, .row > div h2 { font-size: .95rem; margin: 0 0 .5rem; }
+  .row > div h2.stacked { margin-top: .8rem; }
   label { display: block; margin: .3rem 0; cursor: pointer; font-size: .9rem; }
   input[type=file] { margin: .3rem 0 .2rem .35rem; }
   button {
@@ -105,12 +105,12 @@
 
     <section>
       <h2>3 &middot; run</h2>
-      <button type="button" id="run-btn" disabled>scan for sensitive columns</button>
+      <button type="button" id="run-btn" disabled>scan columns</button>
       <button type="button" id="clear-btn" class="secondary" disabled>clear storage</button>
     </section>
   </div>
 
-  <section id="results" hidden>
+  <div id="results" hidden>
     <div class="row row-verdict">
       <div>
         <h2>verdict</h2>
@@ -125,20 +125,18 @@
       <div>
         <h2>task run</h2>
         <table id="status-table"><tbody></tbody></table>
+        <h2 class="stacked">run history</h2>
+        <table id="history-table"><thead><tr><th>run</th><th>started</th><th>status</th></tr></thead><tbody></tbody></table>
       </div>
     </div>
 
-    <div class="row row-2">
+    <div class="row row-1">
       <div>
         <h2>full detail</h2>
         <pre class="json" id="report-json"></pre>
       </div>
-      <div>
-        <h2>run history</h2>
-        <table id="history-table"><thead><tr><th>run</th><th>started</th><th>status</th></tr></thead><tbody></tbody></table>
-      </div>
     </div>
-  </section>
+  </div>
 
   <footer>
     Running DuckPipe's own unmodified source
@@ -294,13 +292,24 @@ function renderVerdict(report) {
     : "";
 }
 
+// "skipped" alone doesn't say *why* -- always the same reason in
+// DuckPipe (a cached result reused because nothing this task depends on
+// changed), so it's safe to spell out here rather than making a reader
+// infer it. `scan_sensitive_columns` (see pipeline.py) deliberately
+// skips this by never being eligible to skip at all, so a second run
+// against the same file shows both outcomes side by side.
+const STATUS_LABEL = {
+  skipped: "skipped (cached, unchanged)",
+};
+
 function renderStatuses(statuses, errors) {
   const tbody = document.querySelector("#status-table tbody");
   tbody.innerHTML = "";
   for (const [task, status] of Object.entries(statuses)) {
     const tr = document.createElement("tr");
     const err = errors[task] ? ` &mdash; ${errors[task]}` : "";
-    tr.innerHTML = `<td>${task}</td><td class="status-${status}">${status}</td><td>${err}</td>`;
+    const label = STATUS_LABEL[status] || status;
+    tr.innerHTML = `<td>${task}</td><td class="status-${status}">${label}</td><td>${err}</td>`;
     tbody.appendChild(tr);
   }
 }
